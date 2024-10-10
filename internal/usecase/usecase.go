@@ -59,8 +59,13 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 	}
 
 	var products []Product
-	for _ = range productsResp.Products {
-		products = append(products, Product{})
+	for _, p := range productsResp.Products {
+		products = append(products, Product{
+			ProductID:          p.ProductID,
+			ProductName:        p.ProductName,
+			ProductDescription: p.ProductDescription,
+			ProductPrice:       p.ProductPrice,
+		})
 	}
 
 	return SearchProductByNameResponse{
