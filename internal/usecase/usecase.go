@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
 )
 
@@ -34,18 +35,26 @@ func (u *UserUseCase) FindClientByUsername(ctx context.Context, req FindClientBy
 }
 
 func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProductByNameRequest) (resp SearchProductByNameResponse, err error) {
-	product, err := u.r.SearchProductByName(
+
+	if req.ProductName == "" {
+		return SearchProductByNameResponse{}, fmt.Errorf("product name cannot be empty")
+	}
+
+	productsResp, err := u.r.SearchProductByName(
 		ctx,
 		repository.SearchProductByNameRequest{
 			ProductName: req.ProductName,
 		})
 	if err != nil {
-		return resp, err
+		return SearchProductByNameResponse{}, fmt.Errorf("failed to search products: %w", err)
 	}
+
+	var products []Product
+	for _, p := range productsResp.Products {
+		products = append(products, p.ToUseCaseProduct())
+	}
+
 	return SearchProductByNameResponse{
-		ProductID:          product.ProductID,
-		ProductName:        product.ProductName,
-		ProductDescription: product.ProductDescription,
-		ProductPrice:       product.ProductPrice,
+		Products: products,
 	}, nil
 }

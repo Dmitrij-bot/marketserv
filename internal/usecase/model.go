@@ -14,9 +14,13 @@ type SearchProductByNameRequest struct {
 	ProductName string
 }
 
-type SearchProductByNameResponse struct {
+type Product struct {
 	ProductID          int32  `json:"id" db:"id"`
 	ProductName        string `json:"name" db:"name"`
 	ProductDescription string `json:"description" db:"description"`
 	ProductPrice       string `json:"price" db:"price"`
+}
+
+type SearchProductByNameResponse struct {
+	Products []Product
 }
