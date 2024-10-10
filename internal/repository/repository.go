@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/Dmitrij-bot/marketserv/internal/usecase"
 )
 
 type UserRepository struct {
@@ -58,13 +57,4 @@ func (r *UserRepository) SearchProductByName(ctx context.Context, req SearchProd
 	}
 
 	return resp, nil
-}
-
-func (p *Product) ToUseCaseProduct() usecase.Product {
-	return usecase.Product{
-		ProductID:          p.ProductID,
-		ProductName:        p.ProductName,
-		ProductDescription: p.ProductDescription,
-		ProductPrice:       p.ProductPrice,
-	}
 }
