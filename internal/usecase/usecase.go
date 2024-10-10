@@ -32,3 +32,20 @@ func (u *UserUseCase) FindClientByUsername(ctx context.Context, req FindClientBy
 		Role:     user.Role,
 	}, nil
 }
+
+func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProductByNameRequest) (resp SearchProductByNameResponse, err error) {
+	product, err := u.r.SearchProductByName(
+		ctx,
+		repository.SearchProductByNameRequest{
+			ProductName: req.ProductName,
+		})
+	if err != nil {
+		return resp, err
+	}
+	return SearchProductByNameResponse{
+		ProductID:          product.ProductID,
+		ProductName:        product.ProductName,
+		ProductDescription: product.ProductDescription,
+		ProductPrice:       product.ProductPrice,
+	}, nil
+}

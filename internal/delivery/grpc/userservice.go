@@ -47,3 +47,26 @@ func (s *UserService) FindClientByUsername(ctx context.Context, req *pb.FindClie
 
 	return resp, nil
 }
+
+func (s *UserService) SearchProductByName(ctx context.Context, req *pb.SearchProductByNameRequest) (*pb.SearchProductByNameResponse, error) {
+	log.Printf("Received SearchProductByName request: %v", req)
+
+	productResp, err := s.useCase.SearchProductByName(ctx, usecase.SearchProductByNameRequest{
+		ProductName: req.Name,
+	})
+	if err != nil {
+		log.Printf("Error finding name: %v", err)
+		return nil, err
+	}
+
+	resp := &pb.SearchProductByNameResponse{
+		Id:          productResp.ProductID,
+		Name:        productResp.ProductName,
+		Description: productResp.ProductDescription,
+		Price:       productResp.ProductPrice,
+	}
+
+	log.Printf("Product found: %v", resp)
+
+	return resp, nil
+}
