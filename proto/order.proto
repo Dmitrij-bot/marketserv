@@ -9,7 +9,7 @@ option go_package = "proto/order;order";
 service UserService {
   rpc FindClientByUsername (FindClientByUsernameRequest) returns (FindClientByUsernameResponse);
   rpc SearchProductByName (SearchProductByNameRequest) returns (SearchProductByNameResponse);
-  rpc AddProductToCart(AddToCartRequest) returns (AddToCartResponse);
+  rpc AddItemToCart(AddToCartRequest) returns (AddToCartResponse);
 }
 
 message FindClientByUsernameRequest {

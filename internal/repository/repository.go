@@ -61,15 +61,34 @@ func (r *UserRepository) SearchProductByName(ctx context.Context, req SearchProd
 
 func (r *UserRepository) CreateCartIfNotExists(ctx context.Context, req CreateCartIfNotExistsRequest) (resp CreateCartIfNotExistsResponse, err error) {
 
-	err = r.db.QueryRowContext(ctx, CreateCartIfNotExistsSQL, req.ClientId).Scan(&resp.CartId)
+	_, err = r.db.ExecContext(ctx, CreateCartIfNotExistsInsertSQL, req.ClientId)
+	if err != nil {
+		return resp, fmt.Errorf("failed to create or check cart: %w", err)
+	}
+
+	err = r.db.QueryRowContext(ctx, CreateCartIfNotExistsSelectSQL, req.ClientId).Scan(&resp.CartId)
+	if err != nil {
+		return resp, fmt.Errorf("failed to retrieve cart: %w", err)
+	}
+
+	return resp, nil
+
+	/*err = r.db.QueryRowContext(ctx, CreateCartIfNotExistsSQL, req.ClientId).Scan(&resp.CartId)
 	if err != nil {
 		return resp, fmt.Errorf("failed to create or retrieve cart: %w", err)
 	}
-	return resp, nil
+	return resp, nil*/
 }
 func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
 
-	_, err = r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
+	checkCart, err := r.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
+		ClientId: req.CartId,
+	})
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to check or create cart: %w", err)
+	}
+
+	_, err = r.db.ExecContext(ctx, AddItemToCartSQL, checkCart.CartId, req.ProductID, req.Quantity)
 
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add item to cart: %w", err)

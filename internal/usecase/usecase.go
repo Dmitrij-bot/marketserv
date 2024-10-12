@@ -91,10 +91,18 @@ func (u *UserUseCase) CreateCartIfNotExists(ctx context.Context, req CreateCartI
 }
 
 func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
+
+	cartResp, err := u.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
+		ClientId: req.CartId,
+	})
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to check or create cart: %w", err)
+	}
+
 	addResp, err := u.r.AddItemToCart(
 		ctx,
 		repository.AddItemToCartRequest{
-			CartId:    req.CartId,
+			CartId:    cartResp.CartId,
 			ProductID: req.ProductID,
 			Quantity:  req.Quantity,
 		})
