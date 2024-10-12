@@ -24,3 +24,21 @@ type Product struct {
 type SearchProductByNameResponse struct {
 	Products []Product
 }
+
+type CreateCartIfNotExistsRequest struct {
+	ClientId int `json:"client_id" db:"client_id"`
+}
+
+type CreateCartIfNotExistsResponse struct {
+	CartId int `json:"cart_id" db:"cart_id"`
+}
+
+type AddItemToCartRequest struct {
+	CartId    int   `json:"cart_id" db:"cart_id"`
+	ProductID int32 `json:"product_id" db:"product_id"`
+	Quantity  int   `json:"quantity" db:"quantity"`
+}
+
+type AddItemToCartResponse struct {
+	Success bool `json:"add success"`
+}
