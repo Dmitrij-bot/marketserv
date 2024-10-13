@@ -73,27 +73,10 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 	}, nil
 }
 
-func (u *UserUseCase) CreateCartIfNotExists(ctx context.Context, req CreateCartIfNotExistsRequest) (resp CreateCartIfNotExistsResponse, err error) {
-
-	cartResp, err := u.r.CreateCartIfNotExists(
-		ctx,
-		repository.CreateCartIfNotExistsRequest{
-			ClientId: req.ClientId,
-		})
-
-	if err != nil {
-		return resp, fmt.Errorf("failed to create or retrieve cart: %w", err)
-	}
-
-	resp.CartId = cartResp.CartId
-
-	return resp, nil
-}
-
 func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
 
-	cartResp, err := u.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
-		ClientId: req.CartId,
+	cartResp, err := u.r.CreateCartIfNotExists(ctx, repository.CreateCartIfNotExistsRequest{
+		ClientId: req.ClientId,
 	})
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to check or create cart: %w", err)

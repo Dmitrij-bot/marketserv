@@ -82,32 +82,6 @@ func (s *UserService) SearchProductByName(ctx context.Context, req *pb.SearchPro
 	return resp, nil
 }
 
-func (s *UserService) CreateCartIfNotExists(ctx context.Context, req *pb.AddToCartRequest) (*pb.AddToCartResponse, error) {
-	log.Printf("Received CreateCartIfNotExists request: %v", req)
-
-	if req.UserId == 0 {
-		return nil, fmt.Errorf("user id cannot be zero")
-	}
-
-	cartResp, err := s.useCase.CreateCartIfNotExists(
-		ctx,
-		usecase.CreateCartIfNotExistsRequest{
-			ClientId: int(req.UserId),
-		})
-	if err != nil {
-		log.Printf("Error creating or retrieving cart: %v", err)
-		return nil, fmt.Errorf("failed to create or retrieve cart: %w", err)
-	}
-
-	resp := &pb.AddToCartResponse{
-		Message: fmt.Sprintf("Cart created or retrieved successfully with ID: %d", cartResp.CartId),
-	}
-
-	log.Printf("Cart creation response: %v", resp)
-
-	return resp, nil
-}
-
 func (s *UserService) AddItemToCart(ctx context.Context, req *pb.AddToCartRequest) (*pb.AddToCartResponse, error) {
 	log.Printf("Received AddItemToCart request: %v", req)
 
@@ -118,9 +92,9 @@ func (s *UserService) AddItemToCart(ctx context.Context, req *pb.AddToCartReques
 	_, err := s.useCase.AddItemToCart(
 		ctx,
 		usecase.AddItemToCartRequest{
-			CartId:    int(req.UserId),
+			ClientId:  req.UserId,
 			ProductID: req.ProductId,
-			Quantity:  int(req.Quantity),
+			Quantity:  req.Quantity,
 		})
 
 	if err != nil {

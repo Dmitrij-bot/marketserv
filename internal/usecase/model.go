@@ -26,17 +26,18 @@ type SearchProductByNameResponse struct {
 }
 
 type CreateCartIfNotExistsRequest struct {
-	ClientId int `json:"client_id" db:"client_id"`
+	ClientId int32 `json:"client_id" db:"client_id"`
 }
 
 type CreateCartIfNotExistsResponse struct {
-	CartId int `json:"cart_id" db:"cart_id"`
+	CartId int32 `json:"cart_id" db:"cart_id"`
 }
 
 type AddItemToCartRequest struct {
-	CartId    int   `json:"cart_id" db:"cart_id"`
+	ClientId  int32 `json:"client_id" db:"client_id"`
+	CartId    int32 `json:"cart_id" db:"cart_id"`
 	ProductID int32 `json:"product_id" db:"product_id"`
-	Quantity  int   `json:"quantity" db:"quantity"`
+	Quantity  int32 `json:"quantity" db:"quantity"`
 }
 
 type AddItemToCartResponse struct {
