@@ -34,15 +34,6 @@ func (u *UserUseCase) FindClientByUsername(ctx context.Context, req FindClientBy
 	}, nil
 }
 
-/*func (p *repository.Product) ToUseCaseProduct() Product {
-	return Product{
-		ProductID:          p.ProductID,
-		ProductName:        p.ProductName,
-		ProductDescription: p.ProductDescription,
-		ProductPrice:       p.ProductPrice,
-	}
-}*/
-
 func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProductByNameRequest) (resp SearchProductByNameResponse, err error) {
 
 	if req.ProductName == "" {
