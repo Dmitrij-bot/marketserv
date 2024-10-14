@@ -84,6 +84,7 @@ func (s *UserService) SearchProductByName(ctx context.Context, req *pb.SearchPro
 
 func (s *UserService) AddItemToCart(ctx context.Context, req *pb.AddToCartRequest) (*pb.AddToCartResponse, error) {
 	log.Printf("Received AddItemToCart request: %v", req)
+	log.Printf("Received AddItemToCart request: user_id: %d, product_id: %d, quantity: %d", req.UserId, req.ProductId, req.Quantity)
 
 	if req.UserId == 0 || req.ProductId == 0 || req.Quantity == 0 {
 		return nil, fmt.Errorf("invalid input: userId, productId, and quantity must be greater than zero")
