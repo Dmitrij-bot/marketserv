@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"log"
 )
 
 type UserRepository struct {
@@ -106,6 +109,17 @@ func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemF
 			return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("cart not found for user_id %d", req.ClientId)
 		}
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to find cart_id: %v", err)
+	}
+
+	var exists bool
+	err = r.db.QueryRowContext(ctx, SearchProductByIdSQL, req.CartId, req.ProductID).Scan(&exists)
+	if err != nil {
+		log.Printf("Error checking if item exists in cart: %v", err)
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("Error checking if item exists in cart: %v", err)
+	}
+
+	if !exists {
+		return DeleteItemFromCartResponse{Success: false}, status.Errorf(codes.NotFound, "Item not found in cart")
 	}
 
 	_, err = r.db.ExecContext(context.Background(), DeleteItemFromCartSQL, req.CartId, req.ProductID)
