@@ -89,3 +89,20 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 		Success: addResp.Success,
 	}, nil
 }
+
+func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error) {
+
+	deleteResp, err := u.r.DeleteItemFromCart(
+		ctx,
+		repository.DeleteItemFromCartRequest{
+			ClientId:  req.ClientId,
+			ProductID: req.ProductID,
+		})
+	if err != nil {
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete from cart: %w", err)
+	}
+
+	return DeleteItemFromCartResponse{
+		Success: deleteResp.Success,
+	}, nil
+}

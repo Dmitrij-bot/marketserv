@@ -97,3 +97,22 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 	return AddItemToCartResponse{Success: true}, nil
 
 }
+
+func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error) {
+
+	err = r.db.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&req.CartId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("cart not found for user_id %d", req.ClientId)
+		}
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to find cart_id: %v", err)
+	}
+
+	_, err = r.db.ExecContext(context.Background(), DeleteItemFromCartSQL, req.CartId, req.ProductID)
+
+	if err != nil {
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete item from cart: %w", err)
+	}
+
+	return DeleteItemFromCartResponse{Success: true}, nil
+}

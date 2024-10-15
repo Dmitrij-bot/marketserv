@@ -83,7 +83,6 @@ func (s *UserService) SearchProductByName(ctx context.Context, req *pb.SearchPro
 }
 
 func (s *UserService) AddItemToCart(ctx context.Context, req *pb.AddToCartRequest) (*pb.AddToCartResponse, error) {
-	log.Printf("Received AddItemToCart request: %v", req)
 	log.Printf("Received AddItemToCart request: user_id: %d, product_id: %d, quantity: %d", req.UserId, req.ProductId, req.Quantity)
 
 	if req.UserId == 0 || req.ProductId == 0 || req.Quantity == 0 {
@@ -109,4 +108,27 @@ func (s *UserService) AddItemToCart(ctx context.Context, req *pb.AddToCartReques
 
 	return resp, nil
 
+}
+
+func (s *UserService) DeleteItemFromCart(ctx context.Context, req *pb.DeleteFromCartRequest) (*pb.DeleteFromCartResponse, error) {
+	log.Printf("Receved DeleteItemFromCart : user_id: %d, product_id: %d", req.UserId, req.ProductId)
+	if req.UserId == 0 || req.ProductId == 0 {
+		return nil, fmt.Errorf("invalid input: userId, productId must be greater than zero")
+	}
+
+	_, err := s.useCase.DeleteItemFromCart(
+		ctx,
+		usecase.DeleteItemFromCartRequest{
+			ClientId:  req.UserId,
+			ProductID: req.ProductId,
+		})
+
+	if err != nil {
+		log.Printf("Error delete item from cart: %v", err)
+		return nil, fmt.Errorf("failed to delete item from cart: %w", err)
+	}
+	resp := &pb.DeleteFromCartResponse{
+		Message: fmt.Sprintf("Item with product ID %d delete from cart successfully", req.ProductId),
+	}
+	return resp, nil
 }

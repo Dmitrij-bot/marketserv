@@ -43,3 +43,13 @@ type AddItemToCartRequest struct {
 type AddItemToCartResponse struct {
 	Success bool `json:"add success"`
 }
+
+type DeleteItemFromCartRequest struct {
+	ClientId  int32 `json:"client_id" db:"client_id"`
+	ProductID int32 `json:"product_id" db:"product_id"`
+	CartId    int32 `json:"cart_id" db:"cart_id"`
+}
+
+type DeleteItemFromCartResponse struct {
+	Success bool `json:"delete success"`
+}

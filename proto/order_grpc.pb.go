@@ -25,6 +25,7 @@ const (
 	UserService_FindClientByUsername_FullMethodName = "/order.UserService/FindClientByUsername"
 	UserService_SearchProductByName_FullMethodName  = "/order.UserService/SearchProductByName"
 	UserService_AddItemToCart_FullMethodName        = "/order.UserService/AddItemToCart"
+	UserService_DeleteItemFromCart_FullMethodName   = "/order.UserService/DeleteItemFromCart"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -34,6 +35,7 @@ type UserServiceClient interface {
 	FindClientByUsername(ctx context.Context, in *FindClientByUsernameRequest, opts ...grpc.CallOption) (*FindClientByUsernameResponse, error)
 	SearchProductByName(ctx context.Context, in *SearchProductByNameRequest, opts ...grpc.CallOption) (*SearchProductByNameResponse, error)
 	AddItemToCart(ctx context.Context, in *AddToCartRequest, opts ...grpc.CallOption) (*AddToCartResponse, error)
+	DeleteItemFromCart(ctx context.Context, in *DeleteFromCartRequest, opts ...grpc.CallOption) (*DeleteFromCartResponse, error)
 }
 
 type userServiceClient struct {
@@ -74,6 +76,16 @@ func (c *userServiceClient) AddItemToCart(ctx context.Context, in *AddToCartRequ
 	return out, nil
 }
 
+func (c *userServiceClient) DeleteItemFromCart(ctx context.Context, in *DeleteFromCartRequest, opts ...grpc.CallOption) (*DeleteFromCartResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteFromCartResponse)
+	err := c.cc.Invoke(ctx, UserService_DeleteItemFromCart_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -81,6 +93,7 @@ type UserServiceServer interface {
 	FindClientByUsername(context.Context, *FindClientByUsernameRequest) (*FindClientByUsernameResponse, error)
 	SearchProductByName(context.Context, *SearchProductByNameRequest) (*SearchProductByNameResponse, error)
 	AddItemToCart(context.Context, *AddToCartRequest) (*AddToCartResponse, error)
+	DeleteItemFromCart(context.Context, *DeleteFromCartRequest) (*DeleteFromCartResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -99,6 +112,9 @@ func (UnimplementedUserServiceServer) SearchProductByName(context.Context, *Sear
 }
 func (UnimplementedUserServiceServer) AddItemToCart(context.Context, *AddToCartRequest) (*AddToCartResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddItemToCart not implemented")
+}
+func (UnimplementedUserServiceServer) DeleteItemFromCart(context.Context, *DeleteFromCartRequest) (*DeleteFromCartResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteItemFromCart not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -175,6 +191,24 @@ func _UserService_AddItemToCart_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_DeleteItemFromCart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFromCartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).DeleteItemFromCart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_DeleteItemFromCart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).DeleteItemFromCart(ctx, req.(*DeleteFromCartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -193,6 +227,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddItemToCart",
 			Handler:    _UserService_AddItemToCart_Handler,
+		},
+		{
+			MethodName: "DeleteItemFromCart",
+			Handler:    _UserService_DeleteItemFromCart_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

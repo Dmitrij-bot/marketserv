@@ -10,6 +10,7 @@ service UserService {
   rpc FindClientByUsername (FindClientByUsernameRequest) returns (FindClientByUsernameResponse);
   rpc SearchProductByName (SearchProductByNameRequest) returns (SearchProductByNameResponse);
   rpc AddItemToCart(AddToCartRequest) returns (AddToCartResponse);
+  rpc DeleteItemFromCart(DeleteFromCartRequest) returns (DeleteFromCartResponse);
 }
 
 message FindClientByUsernameRequest {
@@ -47,5 +48,13 @@ message AddToCartResponse {
   string message = 1;
 }
 
+message DeleteFromCartRequest {
+  int32 user_id = 1;
+  int32 product_id = 2;
+}
+
+message DeleteFromCartResponse {
+  string message = 1;
+}
 
 
