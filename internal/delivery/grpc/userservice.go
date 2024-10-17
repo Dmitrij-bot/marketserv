@@ -132,3 +132,31 @@ func (s *UserService) DeleteItemFromCart(ctx context.Context, req *pb.DeleteFrom
 	}
 	return resp, nil
 }
+
+func (s *UserService) GetCart(ctx context.Context, req *pb.GetCartRequest) (*pb.GetCartResponse, error) {
+
+	cartResp, err := s.useCase.GetCart(ctx, usecase.GetCartRequest{
+		ClientId: req.UserId,
+	})
+	if err != nil {
+		log.Printf("failed to get cart for user_id %d: %v", req.UserId, err)
+		return nil, fmt.Errorf("failed to get cart for user_id %d: %v", req.UserId, err)
+	}
+	log.Printf("Usecase returned cart: Items - %v, TotalPrice - %s", cartResp.CartItems, cartResp.TotalPrice)
+	var cartItems []*pb.CartItem
+	for _, item := range cartResp.CartItems {
+		cartItems = append(cartItems, &pb.CartItem{
+			ProductId: item.ProductID,
+			Quantity:  strconv.Itoa(int(item.ProductQuantity)),
+			Price:     item.ProductPrice,
+		})
+	}
+
+	log.Printf("Returning response: Items - %v, TotalPrice - %s", cartItems, cartResp.TotalPrice)
+
+	resp := &pb.GetCartResponse{
+		Items:      cartItems,
+		TotalPrice: cartResp.TotalPrice,
+	}
+	return resp, nil
+}

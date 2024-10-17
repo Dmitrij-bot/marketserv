@@ -26,6 +26,7 @@ const (
 	UserService_SearchProductByName_FullMethodName  = "/order.UserService/SearchProductByName"
 	UserService_AddItemToCart_FullMethodName        = "/order.UserService/AddItemToCart"
 	UserService_DeleteItemFromCart_FullMethodName   = "/order.UserService/DeleteItemFromCart"
+	UserService_GetCart_FullMethodName              = "/order.UserService/GetCart"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -36,6 +37,7 @@ type UserServiceClient interface {
 	SearchProductByName(ctx context.Context, in *SearchProductByNameRequest, opts ...grpc.CallOption) (*SearchProductByNameResponse, error)
 	AddItemToCart(ctx context.Context, in *AddToCartRequest, opts ...grpc.CallOption) (*AddToCartResponse, error)
 	DeleteItemFromCart(ctx context.Context, in *DeleteFromCartRequest, opts ...grpc.CallOption) (*DeleteFromCartResponse, error)
+	GetCart(ctx context.Context, in *GetCartRequest, opts ...grpc.CallOption) (*GetCartResponse, error)
 }
 
 type userServiceClient struct {
@@ -86,6 +88,16 @@ func (c *userServiceClient) DeleteItemFromCart(ctx context.Context, in *DeleteFr
 	return out, nil
 }
 
+func (c *userServiceClient) GetCart(ctx context.Context, in *GetCartRequest, opts ...grpc.CallOption) (*GetCartResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCartResponse)
+	err := c.cc.Invoke(ctx, UserService_GetCart_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -94,6 +106,7 @@ type UserServiceServer interface {
 	SearchProductByName(context.Context, *SearchProductByNameRequest) (*SearchProductByNameResponse, error)
 	AddItemToCart(context.Context, *AddToCartRequest) (*AddToCartResponse, error)
 	DeleteItemFromCart(context.Context, *DeleteFromCartRequest) (*DeleteFromCartResponse, error)
+	GetCart(context.Context, *GetCartRequest) (*GetCartResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -115,6 +128,9 @@ func (UnimplementedUserServiceServer) AddItemToCart(context.Context, *AddToCartR
 }
 func (UnimplementedUserServiceServer) DeleteItemFromCart(context.Context, *DeleteFromCartRequest) (*DeleteFromCartResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteItemFromCart not implemented")
+}
+func (UnimplementedUserServiceServer) GetCart(context.Context, *GetCartRequest) (*GetCartResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCart not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -209,6 +225,24 @@ func _UserService_DeleteItemFromCart_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_GetCart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetCart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetCart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetCart(ctx, req.(*GetCartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -231,6 +265,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteItemFromCart",
 			Handler:    _UserService_DeleteItemFromCart_Handler,
+		},
+		{
+			MethodName: "GetCart",
+			Handler:    _UserService_GetCart_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

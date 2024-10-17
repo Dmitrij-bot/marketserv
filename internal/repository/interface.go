@@ -8,4 +8,5 @@ type Interface interface {
 	CreateCartIfNotExists(ctx context.Context, req CreateCartIfNotExistsRequest) (resp CreateCartIfNotExistsResponse, err error)
 	AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error)
 	DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error)
+	GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error)
 }

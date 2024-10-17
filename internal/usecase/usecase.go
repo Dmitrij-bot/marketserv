@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
+	"log"
 )
 
 type UserUseCase struct {
@@ -104,5 +105,38 @@ func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFrom
 
 	return DeleteItemFromCartResponse{
 		Success: deleteResp.Success,
+	}, nil
+}
+
+func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error) {
+
+	if req.ClientId == 0 {
+		return GetCartResponse{}, fmt.Errorf("invalid user_id: %d", req.ClientId)
+	}
+	log.Printf("Received GetCart request for user_id: %d", req.ClientId)
+
+	getResp, err := u.r.GetCart(
+		ctx,
+		repository.GetCartRequest{
+			ClientId: req.ClientId})
+	if err != nil {
+		log.Printf("Error fetching cart for user_id %d: %v", req.ClientId, err)
+		return GetCartResponse{}, fmt.Errorf("usecase: failed to get cart for user_id %d: %v", req.ClientId, err)
+	}
+
+	var cartItems []CartItem
+	for _, repoItem := range getResp.CartItems {
+		cartItems = append(cartItems, CartItem{
+			ProductID:       repoItem.ProductID,
+			ProductQuantity: repoItem.ProductQuantity,
+			ProductPrice:    repoItem.ProductPrice,
+		})
+	}
+
+	log.Printf("Returning from GetCart: CartItems - %v, TotalPrice - %s", cartItems, getResp.TotalPrice)
+
+	return GetCartResponse{
+		CartItems:  cartItems,
+		TotalPrice: getResp.TotalPrice,
 	}, nil
 }

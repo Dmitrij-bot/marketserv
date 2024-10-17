@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"
+	"strconv"
 )
 
 type UserRepository struct {
@@ -129,4 +130,64 @@ func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemF
 	}
 
 	return DeleteItemFromCartResponse{Success: true}, nil
+}
+
+func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error) {
+
+	err = r.db.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&req.CartId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return GetCartResponse{}, fmt.Errorf("cart not found for user_id %d", req.ClientId)
+		}
+		return GetCartResponse{}, fmt.Errorf("failed to find cart_id for user_id %d: %v", req.ClientId, err)
+	}
+
+	log.Printf("Found CartId for user_id %d: %d", req.ClientId, req.CartId)
+
+	rows, err := r.db.QueryContext(ctx, GetCartItemSQL, req.CartId)
+	if err != nil {
+		return GetCartResponse{}, fmt.Errorf("failed to get cart items for cart_id %d: %w", req.CartId, err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
+	}()
+
+	log.Printf("Fetched rows for cart_id %d", req.CartId)
+
+	resp.CartItems = []CartItem{}
+	totalPrice := 0.0
+
+	for rows.Next() {
+		var cartItem CartItem
+		var productPrice float64
+
+		if err := rows.Scan(&cartItem.ProductID, &cartItem.ProductQuantity, &cartItem.ProductPrice); err != nil {
+			return resp, fmt.Errorf("failed to scan product for cart_id %d: %w", req.CartId, err)
+		}
+
+		productPrice, err = strconv.ParseFloat(cartItem.ProductPrice, 64)
+		if err != nil {
+			log.Printf("Error parsing price for ProductID %d: %v", cartItem.ProductID, err)
+			return resp, fmt.Errorf("error parsing price for ProductID %d: %v", cartItem.ProductID, err)
+		}
+
+		log.Printf("Scanned item: ProductID=%d, Quantity=%d, Price=%.2f", cartItem.ProductID, cartItem.ProductQuantity, productPrice)
+
+		resp.CartItems = append(resp.CartItems, cartItem)
+
+		totalPrice += productPrice * float64(cartItem.ProductQuantity)
+	}
+
+	if err := rows.Err(); err != nil {
+		return resp, fmt.Errorf("error occurred during row iteration for cart_id %d: %w", req.CartId, err)
+	}
+
+	resp = GetCartResponse{
+		CartItems:  resp.CartItems,
+		TotalPrice: fmt.Sprintf("%.2f", totalPrice), // Форматируем перед отправкой
+	}
+
+	return resp, nil
 }

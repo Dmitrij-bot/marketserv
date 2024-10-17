@@ -53,3 +53,19 @@ type DeleteItemFromCartRequest struct {
 type DeleteItemFromCartResponse struct {
 	Success bool `json:"delete success"`
 }
+
+type GetCartRequest struct {
+	ClientId int32 `json:"client_id" db:"client_id"`
+	CartId   int32 `json:"cart_id" db:"cart_id"`
+}
+
+type CartItem struct {
+	ProductID       int32  `json:"id" db:"id"`
+	ProductQuantity int32  `json:"quantity" db:"quantity"`
+	ProductPrice    string `json:"price" db:"price"`
+}
+
+type GetCartResponse struct {
+	CartItems  []CartItem
+	TotalPrice string
+}

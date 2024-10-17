@@ -25,4 +25,5 @@ const (
 `
 	SearchProductByIdSQL  = "SELECT EXISTS(SELECT 1 FROM cart_items WHERE cart_id = $1 AND product_id = $2)"
 	DeleteItemFromCartSQL = "DELETE FROM cart_items  WHERE  cart_id = $1 AND  product_id = $2"
+	GetCartItemSQL        = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
 )
