@@ -43,7 +43,23 @@ const (
     DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
     WHERE EXISTS (SELECT 1 FROM updated);
 `
-	SearchProductByIdSQL  = "SELECT EXISTS(SELECT 1 FROM cart_items WHERE cart_id = $1 AND product_id = $2)"
-	DeleteItemFromCartSQL = "DELETE FROM cart_items  WHERE  cart_id = $1 AND  product_id = $2"
-	GetCartItemSQL        = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
+	SearchProductByIdSQL   = "SELECT EXISTS(SELECT 1 FROM cart_items WHERE cart_id = $1 AND product_id = $2)"
+	DeleteItemFromCartSQL  = "DELETE FROM cart_items  WHERE  cart_id = $1 AND  product_id = $2"
+	DeleteItemFromCartSQL2 = `
+    WITH updated AS (
+        UPDATE cart_items
+        SET quantity = quantity - 1
+        WHERE cart_id = $1 AND  product_id = $2 AND quantity >0
+        RETURNING quantity
+    ),
+     deleted AS (
+        DELETE FROM cart_items
+        WHERE cart_id = $1 AND  product_id = $2 AND quantity = 0
+    )
+    UPDATE products
+        SET quantity = quantity + 1
+        WHERE id = $2
+        AND EXISTS (SELECT 1 FROM updated);
+`
+	GetCartItemSQL = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
 )
