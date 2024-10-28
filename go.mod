@@ -3,8 +3,8 @@ module github.com/Dmitrij-bot/marketserv
 go 1.23.1
 
 require (
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
-	google.golang.org/genproto/googleapis/api v0.0.0-20240930140551-af27646dc61f
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.34.2
 )

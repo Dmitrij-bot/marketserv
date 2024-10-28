@@ -3,23 +3,18 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
-
+	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
 
 type DB struct {
-	db  *sql.DB
+	*sqlx.DB
 	cfg Config
 }
 
 func NewDB(config Config) *DB {
 	return &DB{cfg: config}
-}
-
-func (d *DB) SQLBD() *sql.DB {
-	return d.db
 }
 
 func (d *DB) Start(ctx context.Context) error {
@@ -32,7 +27,7 @@ func (d *DB) Start(ctx context.Context) error {
 		d.cfg.SSLMode,
 	)
 
-	db, err := sql.Open("postgres", connectionURL)
+	db, err := sqlx.Open("postgres", connectionURL)
 	if err != nil {
 		return err
 	}
@@ -41,10 +36,10 @@ func (d *DB) Start(ctx context.Context) error {
 		return err
 	}
 
-	d.db = db
+	d.DB = db
 	return nil
 }
 
 func (d *DB) Stop(ctx context.Context) error {
-	return d.db.Close()
+	return d.DB.Close()
 }

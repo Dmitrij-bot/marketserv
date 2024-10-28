@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"
@@ -12,13 +13,11 @@ import (
 )
 
 type UserRepository struct {
-	db *sql.DB
+	db *postgres.DB
 }
 
-func NewUserRepository(db *sql.DB) *UserRepository {
-	return &UserRepository{
-		db: db,
-	}
+func NewUserRepository(db *postgres.DB) *UserRepository {
+	return &UserRepository{db: db}
 }
 
 func (r *UserRepository) FindClientByUsername(ctx context.Context, req FindClientByUsernameRequest) (resp FindClientByUsernameResponse, err error) {
