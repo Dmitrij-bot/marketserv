@@ -1,0 +1,13 @@
+{
+  "Postgres": {
+    "DBHost": "localhost",
+    "DBPort": "5432",
+    "DBUser": "postgres",
+    "DBPassword": "39786682",
+    "DBName": "first",
+    "SSLMode": "disable"
+  },
+  "GRPC": {
+    "Host":"0.0.0.0:50051"
+  }
+}

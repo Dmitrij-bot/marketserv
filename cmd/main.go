@@ -3,52 +3,50 @@ package main
 import (
 	"context"
 	"github.com/Dmitrij-bot/marketserv/config"
-	"github.com/Dmitrij-bot/marketserv/internal/delivery/grpc"
-	grpc2 "github.com/Dmitrij-bot/marketserv/internal/grpc"
-	"github.com/Dmitrij-bot/marketserv/internal/repository"
-	"github.com/Dmitrij-bot/marketserv/internal/usecase"
-	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
+	"github.com/Dmitrij-bot/marketserv/internal/app"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
+func GetParamFromEnv(env string, defFileName string) string {
+	configPath := os.Getenv(env)
+	if len(configPath) == 0 {
+		configPath = defFileName
+	}
+
+	return configPath
+}
+
 func main() {
-	cfg := config.Config{
-		GRPC: grpc2.Config{
-			Host: ":50051",
-		},
-		Postgres: postgres.Config{
-			DBHost:     "localhost",
-			DBPort:     "5432",
-			DBUser:     "postgres",
-			DBPassword: "39786682",
-			DBName:     "first",
-			SSLMode:    "disable",
-		},
+
+	configPath := GetParamFromEnv("CONFIG", "./config/config.json")
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatal("cant load config: " + err.Error())
 	}
 
-	db := postgres.NewDB(cfg.Postgres)
-	if err := db.Start(context.Background()); err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+	a := app.New(cfg)
+
+	startCtx, startCancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer startCancel()
+
+	if err := a.Start(startCtx); err != nil {
+		log.Fatal(err.Error())
 	}
-	defer func() {
-		if err := db.Stop(context.Background()); err != nil {
-			log.Printf("failed to close database connection: %v", err)
-		}
-	}()
 
-	userRepo := repository.NewUserRepository(db.SQLBD())
-	userUseCase := usecase.New(userRepo)
-	userService := grpc.NewUserService(userUseCase)
-	grpcServer := grpc2.NewGRPCServer(cfg.GRPC, userService)
+	quitCh := make(chan os.Signal, 1)
+	signal.Notify(quitCh, os.Interrupt, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	<-quitCh
 
-	if err := grpcServer.Start(context.Background()); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer stopCancel()
+
+	err = a.Stop(stopCtx)
+	if err != nil {
+		log.Fatal(err.Error())
 	}
-	defer func() {
-		if err := grpcServer.Stop(context.Background()); err != nil {
-			log.Printf("failed to stop server: %v", err) // Логирование ошибки
-		}
-	}()
-
-	select {}
 }
