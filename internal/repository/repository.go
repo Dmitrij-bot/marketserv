@@ -91,10 +91,15 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 		req.CartId = cartResp.CartId
 	}
 
-	_, err = r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
+	result, err := r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
 
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add item to cart: %w", err)
+	}
+
+	affectedRows, _ := result.RowsAffected()
+	if affectedRows == 0 {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock")
 	}
 
 	return AddItemToCartResponse{Success: true}, nil
