@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log"
 	"strconv"
 )
@@ -91,10 +89,15 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 		req.CartId = cartResp.CartId
 	}
 
-	_, err = r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
+	result, err := r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
 
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add item to cart: %w", err)
+	}
+
+	affectedRows, _ := result.RowsAffected()
+	if affectedRows == 0 {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock")
 	}
 
 	return AddItemToCartResponse{Success: true}, nil
@@ -111,7 +114,7 @@ func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemF
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to find cart_id: %v", err)
 	}
 
-	var exists bool
+	/*var exists bool
 	err = r.db.QueryRowContext(ctx, SearchProductByIdSQL, req.CartId, req.ProductID).Scan(&exists)
 	if err != nil {
 		log.Printf("Error checking if item exists in cart: %v", err)
@@ -120,12 +123,21 @@ func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemF
 
 	if !exists {
 		return DeleteItemFromCartResponse{Success: false}, status.Errorf(codes.NotFound, "Item not found in cart")
-	}
+	}*/
 
-	_, err = r.db.ExecContext(context.Background(), DeleteItemFromCartSQL, req.CartId, req.ProductID)
+	result, err := r.db.ExecContext(context.Background(), DeleteItemFromCartSQL2, req.CartId, req.ProductID)
 
 	if err != nil {
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete item from cart: %w", err)
+	}
+
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to check affected rows: %w", err)
+	}
+
+	if affectedRows == 0 {
+		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("no items were updated or deleted")
 	}
 
 	return DeleteItemFromCartResponse{Success: true}, nil

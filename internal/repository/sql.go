@@ -11,7 +11,26 @@ const (
             ON CONFLICT (user_id) DO NOTHING 
             RETURNING cart_id`
 
+	/*AddItemToCartSQL = `
+	    INSERT INTO cart_items (cart_id, product_id, quantity, price, added_at)
+	    VALUES (
+	        $1, -- cart_id
+	        $2, -- product_id
+	        $3, -- quantity
+	        (SELECT price FROM products WHERE id = $2 LIMIT 1), -- price
+	        NOW() -- added_at
+	    )
+	    ON CONFLICT (cart_id, product_id)
+	    DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
+	`*/
+
 	AddItemToCartSQL = `
+    WITH updated AS (
+        UPDATE products
+        SET quantity = quantity - $3
+        WHERE id = $2 AND quantity >= $3
+        RETURNING id
+    )
     INSERT INTO cart_items (cart_id, product_id, quantity, price, added_at)
     VALUES (
         $1, -- cart_id
@@ -22,8 +41,25 @@ const (
     )
     ON CONFLICT (cart_id, product_id)
     DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
+    WHERE EXISTS (SELECT 1 FROM updated);
 `
-	SearchProductByIdSQL  = "SELECT EXISTS(SELECT 1 FROM cart_items WHERE cart_id = $1 AND product_id = $2)"
-	DeleteItemFromCartSQL = "DELETE FROM cart_items  WHERE  cart_id = $1 AND  product_id = $2"
-	GetCartItemSQL        = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
+	SearchProductByIdSQL   = "SELECT EXISTS(SELECT 1 FROM cart_items WHERE cart_id = $1 AND product_id = $2)"
+	DeleteItemFromCartSQL  = "DELETE FROM cart_items  WHERE  cart_id = $1 AND  product_id = $2"
+	DeleteItemFromCartSQL2 = `
+    WITH updated AS (
+        UPDATE cart_items
+        SET quantity = quantity - 1
+        WHERE cart_id = $1 AND  product_id = $2 AND quantity >0
+        RETURNING quantity
+    ),
+     deleted AS (
+        DELETE FROM cart_items
+        WHERE cart_id = $1 AND  product_id = $2 AND quantity = 0
+    )
+    UPDATE products
+        SET quantity = quantity + 1
+        WHERE id = $2
+        AND EXISTS (SELECT 1 FROM updated);
+`
+	GetCartItemSQL = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
 )
