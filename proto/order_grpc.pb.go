@@ -27,6 +27,7 @@ const (
 	UserService_AddItemToCart_FullMethodName        = "/order.UserService/AddItemToCart"
 	UserService_DeleteItemFromCart_FullMethodName   = "/order.UserService/DeleteItemFromCart"
 	UserService_GetCart_FullMethodName              = "/order.UserService/GetCart"
+	UserService_SimulatePayment_FullMethodName      = "/order.UserService/SimulatePayment"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -38,6 +39,7 @@ type UserServiceClient interface {
 	AddItemToCart(ctx context.Context, in *AddToCartRequest, opts ...grpc.CallOption) (*AddToCartResponse, error)
 	DeleteItemFromCart(ctx context.Context, in *DeleteFromCartRequest, opts ...grpc.CallOption) (*DeleteFromCartResponse, error)
 	GetCart(ctx context.Context, in *GetCartRequest, opts ...grpc.CallOption) (*GetCartResponse, error)
+	SimulatePayment(ctx context.Context, in *PaymentRequest, opts ...grpc.CallOption) (*PaymentResponse, error)
 }
 
 type userServiceClient struct {
@@ -98,6 +100,16 @@ func (c *userServiceClient) GetCart(ctx context.Context, in *GetCartRequest, opt
 	return out, nil
 }
 
+func (c *userServiceClient) SimulatePayment(ctx context.Context, in *PaymentRequest, opts ...grpc.CallOption) (*PaymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PaymentResponse)
+	err := c.cc.Invoke(ctx, UserService_SimulatePayment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -107,6 +119,7 @@ type UserServiceServer interface {
 	AddItemToCart(context.Context, *AddToCartRequest) (*AddToCartResponse, error)
 	DeleteItemFromCart(context.Context, *DeleteFromCartRequest) (*DeleteFromCartResponse, error)
 	GetCart(context.Context, *GetCartRequest) (*GetCartResponse, error)
+	SimulatePayment(context.Context, *PaymentRequest) (*PaymentResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -131,6 +144,9 @@ func (UnimplementedUserServiceServer) DeleteItemFromCart(context.Context, *Delet
 }
 func (UnimplementedUserServiceServer) GetCart(context.Context, *GetCartRequest) (*GetCartResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCart not implemented")
+}
+func (UnimplementedUserServiceServer) SimulatePayment(context.Context, *PaymentRequest) (*PaymentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SimulatePayment not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -243,6 +259,24 @@ func _UserService_GetCart_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_SimulatePayment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PaymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).SimulatePayment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_SimulatePayment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).SimulatePayment(ctx, req.(*PaymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -269,6 +303,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCart",
 			Handler:    _UserService_GetCart_Handler,
+		},
+		{
+			MethodName: "SimulatePayment",
+			Handler:    _UserService_SimulatePayment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

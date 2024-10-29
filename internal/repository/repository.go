@@ -202,3 +202,25 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 
 	return resp, nil
 }
+
+func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest) (resp PaymentResponse, err error) {
+
+	result, err := r.db.ExecContext(ctx, PaymentSQL, req.ClientId)
+
+	if err != nil {
+		return resp, fmt.Errorf("ошибка обработки платежа: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return resp, fmt.Errorf("ошибка проверки затронутых строк: %v", err)
+	}
+	if rowsAffected == 0 {
+		return resp, fmt.Errorf("платёж не выполнен: возможно, недостаточно средств на счёте")
+	}
+
+	resp = PaymentResponse{Success: true}
+
+	return resp, nil
+
+}

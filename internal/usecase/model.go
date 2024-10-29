@@ -69,3 +69,12 @@ type GetCartResponse struct {
 	CartItems  []CartItem
 	TotalPrice string
 }
+
+type PaymentRequest struct {
+	ClientId int32 `json:"client_id" db:"client_id"`
+}
+
+type PaymentResponse struct {
+	Success bool `json:"payment success"`
+	Message string
+}

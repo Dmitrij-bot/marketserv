@@ -160,3 +160,23 @@ func (s *UserService) GetCart(ctx context.Context, req *pb.GetCartRequest) (*pb.
 	}
 	return resp, nil
 }
+
+func (s *UserService) SimulatePayment(ctx context.Context, req *pb.PaymentRequest) (*pb.PaymentResponse, error) {
+
+	_, err := s.useCase.SimulatePayment(
+		ctx,
+		usecase.PaymentRequest{
+			ClientId: req.UserId,
+		})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to payment: %w", err)
+	}
+
+	resp := &pb.PaymentResponse{
+		Success: true,
+		Message: "Оплата успешно выполнена.",
+	}
+
+	return resp, nil
+}
