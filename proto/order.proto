@@ -12,6 +12,7 @@ service UserService {
   rpc AddItemToCart(AddToCartRequest) returns (AddToCartResponse);
   rpc DeleteItemFromCart(DeleteFromCartRequest) returns (DeleteFromCartResponse);
   rpc GetCart(GetCartRequest) returns (GetCartResponse);
+  rpc SimulatePayment(PaymentRequest) returns (PaymentResponse);
 }
 
 message FindClientByUsernameRequest {
@@ -73,6 +74,14 @@ message CartItem {
   string  price =4;
 }
 
+message PaymentRequest {
+  int32 user_id = 1;
+}
+
+message PaymentResponse {
+  bool success = 1;
+  string message = 2;
+}
 
 
 

@@ -140,3 +140,19 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 		TotalPrice: getResp.TotalPrice,
 	}, nil
 }
+
+func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (resp PaymentResponse, err error) {
+
+	paymentResp, err := u.r.SimulatePayment(
+		ctx,
+		repository.PaymentRequest{
+			ClientId: req.ClientId,
+		})
+	if err != nil {
+		return PaymentResponse{Success: false}, fmt.Errorf("failed to payment: %w", err)
+	}
+
+	return PaymentResponse{
+		Success: paymentResp.Success,
+	}, nil
+}

@@ -11,19 +11,6 @@ const (
             ON CONFLICT (user_id) DO NOTHING 
             RETURNING cart_id`
 
-	/*AddItemToCartSQL = `
-	    INSERT INTO cart_items (cart_id, product_id, quantity, price, added_at)
-	    VALUES (
-	        $1, -- cart_id
-	        $2, -- product_id
-	        $3, -- quantity
-	        (SELECT price FROM products WHERE id = $2 LIMIT 1), -- price
-	        NOW() -- added_at
-	    )
-	    ON CONFLICT (cart_id, product_id)
-	    DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
-	`*/
-
 	AddItemToCartSQL = `
     WITH updated AS (
         UPDATE products
@@ -62,4 +49,26 @@ const (
         AND EXISTS (SELECT 1 FROM updated);
 `
 	GetCartItemSQL = "SELECT product_id, quantity, price FROM cart_items WHERE cart_id = $1"
+	PaymentSQL     = `
+    WITH total AS (
+        SELECT SUM(ci.quantity * ci.price) AS total_price
+        FROM cart_items ci
+        JOIN carts c ON c.cart_id = ci.cart_id
+        WHERE c.user_id = $1
+    ),
+    updated AS (
+        UPDATE clients_table
+        SET invoice = invoice - (SELECT total_price FROM total)
+        WHERE id = $1 AND invoice >= (SELECT total_price FROM total)
+        RETURNING id
+    ),
+    wallet_update AS (
+        UPDATE wallet_market
+        SET balance = balance + (SELECT total_price FROM total)
+        WHERE id = 1 
+    )
+    DELETE FROM cart_items
+    WHERE cart_id = (SELECT cart_id FROM carts WHERE user_id = $1)
+    AND EXISTS (SELECT 1 FROM updated);
+    `
 )
