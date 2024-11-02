@@ -10,6 +10,7 @@ import (
 	"github.com/Dmitrij-bot/marketserv/internal/usecase"
 	"github.com/Dmitrij-bot/marketserv/pkg/lyfecycle"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
+	"github.com/Dmitrij-bot/marketserv/pkg/redis"
 	"log"
 )
 
@@ -28,7 +29,8 @@ func New(cfg config.Config) *App {
 
 func (app *App) Start(ctx context.Context) error {
 	db := postgres.NewDB(app.cfg.Postgres)
-	userRepo := repository.NewUserRepository(db)
+	redisClient := redis.NewRedisDB(app.cfg.Redis)
+	userRepo := repository.NewUserRepository(db, redisClient)
 	userUseCase := usecase.New(userRepo)
 	userService := grpc.NewUserService(userUseCase)
 	grpcServer := grpc2.NewGRPCServer(app.cfg.GRPC, userService)
@@ -37,6 +39,7 @@ func (app *App) Start(ctx context.Context) error {
 		app.cmps,
 		cmp{db, "grpc db"},
 		cmp{grpcServer, "grpcServ"},
+		cmp{redisClient, "redisClient"},
 	)
 
 	okCh, errCh := make(chan struct{}), make(chan error)
@@ -76,7 +79,7 @@ func (app *App) Stop(ctx context.Context) error {
 	okCh, errCh := make(chan struct{}), make(chan error)
 
 	go func() {
-		for i := len(app.cmps) - 1; i > 0; i-- {
+		for i := len(app.cmps) - 1; i >= 0; i-- {
 			c := app.cmps[i]
 			log.Println("stopping %q...", c.Name)
 

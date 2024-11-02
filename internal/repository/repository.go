@@ -3,19 +3,25 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
+	"github.com/Dmitrij-bot/marketserv/pkg/redis"
 	"log"
 	"strconv"
 )
 
 type UserRepository struct {
-	db *postgres.DB
+	db          *postgres.DB
+	redisClient *redis.RedisDB
 }
 
-func NewUserRepository(db *postgres.DB) *UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *postgres.DB, redisClient *redis.RedisDB) *UserRepository {
+	return &UserRepository{
+		db:          db,
+		redisClient: redisClient,
+	}
 }
 
 func (r *UserRepository) FindClientByUsername(ctx context.Context, req FindClientByUsernameRequest) (resp FindClientByUsernameResponse, err error) {
@@ -78,8 +84,25 @@ func (r *UserRepository) CreateCartIfNotExists(ctx context.Context, req CreateCa
 }
 
 func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
+	log.Printf("Initial Client ID: %d", req.ClientId)
+	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
+	log.Printf("Generated Redis Key: %s", redisKey)
+	var cartItems []CartItem
+
+	cartData, err := r.redisClient.Get(ctx, redisKey)
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to get cart from Redis: %w", err)
+	}
+
+	if cartData != "" {
+
+		if err := json.Unmarshal([]byte(cartData), &cartItems); err != nil {
+			return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to parse cart data: %w", err)
+		}
+	}
 
 	if req.CartId == 0 {
+		log.Printf("Creating cart for Client ID: %d", req.ClientId)
 		cartResp, err := r.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
 			ClientId: req.ClientId,
 		})
@@ -87,6 +110,20 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 			return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to create or retrieve cart: %w", err)
 		}
 		req.CartId = cartResp.CartId
+		log.Printf("Cart created with ID: %d for Client ID: %d", req.CartId, req.ClientId)
+	}
+
+	log.Printf("Updating or adding item to cart for Client ID: %d", req.ClientId)
+	updateOrAddItem(&cartItems, req.ProductID, req.Quantity)
+
+	updateCartData, err := json.Marshal(cartItems)
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to marshal cart items: %w", err)
+	}
+
+	log.Printf("Saving updated cart data to Redis for Client ID: %d", req.ClientId)
+	if err := r.redisClient.Set(ctx, redisKey, updateCartData, 0); err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to save cart to Redis: %w", err)
 	}
 
 	result, err := r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
@@ -100,8 +137,22 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock")
 	}
 
+	log.Printf("Item successfully added to cart for Client ID: %d", req.ClientId)
 	return AddItemToCartResponse{Success: true}, nil
 
+}
+
+func updateOrAddItem(cartItems *[]CartItem, productID int32, quantity int32) {
+	for i, item := range *cartItems {
+		if item.ProductID == productID {
+			(*cartItems)[i].ProductQuantity += quantity
+			return
+		}
+	}
+	*cartItems = append(*cartItems, CartItem{
+		ProductID:       productID,
+		ProductQuantity: quantity,
+	})
 }
 
 func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error) {
