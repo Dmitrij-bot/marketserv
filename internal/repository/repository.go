@@ -230,38 +230,27 @@ func decreaseItemQuantity(cartItems []CartItem, productID int32) ([]CartItem, bo
 }
 
 func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error) {
-
 	log.Printf("Initial Client ID: %d", req.ClientId)
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
-	var cartItems []CartItem
+
 	log.Printf("Attempting to fetch cart from Redis with key: %s", redisKey)
 	cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
 	if err != nil {
 		if errors.Is(err, redis2.Nil) {
 			log.Printf("Cart not found for Client ID: %d", req.ClientId)
-			cartItems = []CartItem{}
 		} else {
 			return GetCartResponse{}, fmt.Errorf("failed to get cart from Redis: %w", err)
 		}
 	} else {
 		log.Printf("Cart data retrieved from Redis for Client ID %d: %s", req.ClientId, cartData)
-		if err := json.Unmarshal([]byte(cartData), &cartItems); err != nil {
+		if err := json.Unmarshal([]byte(cartData), &resp.CartItems); err != nil {
 			return GetCartResponse{}, fmt.Errorf("failed to parse cart data: %w", err)
 		}
 	}
 
-	log.Printf("Cart items after unmarshal: %+v", cartItems)
+	log.Printf("Cart items after unmarshal: %+v", resp.CartItems)
 
 	totalPrice := 0.0
-	for _, item := range cartItems {
-		log.Printf("Processing item: %+v", item)
-		productPrice, err := strconv.ParseFloat(item.ProductPrice, 64) // Преобразование строки в float64
-		if err != nil {
-			log.Printf("Error parsing price for ProductID %d: %v", item.ProductID, err)
-			return resp, fmt.Errorf("error parsing price for ProductID %d: %v", item.ProductID, err)
-		}
-		totalPrice += productPrice * float64(item.ProductQuantity)
-	}
 
 	if len(resp.CartItems) == 0 {
 		log.Printf("Cart not found in Redis, fetching from database for Client ID: %d", req.ClientId)
@@ -289,17 +278,14 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 		log.Printf("Fetched rows for cart_id %d", req.CartId)
 
 		resp.CartItems = []CartItem{}
-		totalPrice = 0.0
 
 		for rows.Next() {
 			var cartItem CartItem
-			var productPrice float64
-
 			if err := rows.Scan(&cartItem.ProductID, &cartItem.ProductQuantity, &cartItem.ProductPrice); err != nil {
 				return resp, fmt.Errorf("failed to scan product for cart_id %d: %w", req.CartId, err)
 			}
 
-			productPrice, err = strconv.ParseFloat(cartItem.ProductPrice, 64)
+			productPrice, err := strconv.ParseFloat(cartItem.ProductPrice, 64)
 			if err != nil {
 				log.Printf("Error parsing price for ProductID %d: %v", cartItem.ProductID, err)
 				return resp, fmt.Errorf("error parsing price for ProductID %d: %v", cartItem.ProductID, err)
@@ -308,8 +294,7 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 			log.Printf("Scanned item: ProductID=%d, Quantity=%d, Price=%.2f", cartItem.ProductID, cartItem.ProductQuantity, productPrice)
 
 			resp.CartItems = append(resp.CartItems, cartItem)
-
-			totalPrice += productPrice * float64(cartItem.ProductQuantity)
+			totalPrice += productPrice * float64(cartItem.ProductQuantity) // Подсчет общей стоимости
 		}
 
 		if err := rows.Err(); err != nil {
@@ -320,17 +305,21 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 		if err != nil {
 			return GetCartResponse{}, fmt.Errorf("failed to marshal cart items: %w", err)
 		}
-		result := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0)
-		if err := result.Err(); err != nil {
+		if err := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0).Err(); err != nil {
 			return GetCartResponse{}, fmt.Errorf("failed to save cart to Redis: %w", err)
 		}
-
-		resp = GetCartResponse{
-			CartItems:  resp.CartItems,
-			TotalPrice: fmt.Sprintf("%.2f", totalPrice), // Форматируем перед отправкой
+	} else {
+		for _, item := range resp.CartItems {
+			productPrice, err := strconv.ParseFloat(item.ProductPrice, 64)
+			if err != nil {
+				log.Printf("Error parsing price for ProductID %d: %v", item.ProductID, err)
+				return resp, fmt.Errorf("error parsing price for ProductID %d: %v", item.ProductID, err)
+			}
+			totalPrice += productPrice * float64(item.ProductQuantity)
 		}
 	}
 
+	resp.TotalPrice = fmt.Sprintf("%.2f", totalPrice)
 	return resp, nil
 }
 
