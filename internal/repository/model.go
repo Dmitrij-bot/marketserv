@@ -38,6 +38,7 @@ type AddItemToCartRequest struct {
 	CartId    int32 `json:"cart_id" db:"cart_id"`
 	ProductID int32 `json:"product_id" db:"product_id"`
 	Quantity  int32 `json:"quantity" db:"quantity"`
+	Price     int32 `json:"price" db:"price"`
 }
 
 type AddItemToCartResponse struct {

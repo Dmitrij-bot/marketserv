@@ -67,12 +67,6 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 
 func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
 	log.Printf("Creating cart for Client ID: %d", req.ClientId)
-	/*cartResp, err := u.r.CreateCartIfNotExists(ctx, repository.CreateCartIfNotExistsRequest{
-		ClientId: req.ClientId,
-	})
-	if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to check or create cart: %w", err)
-	}*/
 	log.Printf("Adding item to cart for Client ID: %d", req.ClientId)
 	addResp, err := u.r.AddItemToCart(
 		ctx,
