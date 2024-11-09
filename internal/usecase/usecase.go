@@ -2,8 +2,10 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
+	"github.com/IBM/sarama"
 	"log"
 )
 
@@ -66,8 +68,7 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 }
 
 func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
-	log.Printf("Creating cart for Client ID: %d", req.ClientId)
-	log.Printf("Adding item to cart for Client ID: %d", req.ClientId)
+
 	addResp, err := u.r.AddItemToCart(
 		ctx,
 		repository.AddItemToCartRequest{
@@ -79,6 +80,23 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add to cart: %w", err)
+	}
+
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("ошибка сериализации сообщения: %w", err)
+	}
+
+	if addResp.Success {
+
+		message := fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
+			req.ClientId, req.ProductID, req.Quantity)
+
+		err := u.sendKafkaMessage(message)
+		if err != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", req)
+		}
 	}
 
 	return AddItemToCartResponse{
@@ -150,4 +168,38 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 	return PaymentResponse{
 		Success: paymentResp.Success,
 	}, nil
+}
+
+func (u *UserUseCase) sendKafkaMessage(message interface{}) error {
+	// Настройки продюсера Kafka
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+
+	// Создаем синхронного продюсера
+	producer, err := sarama.NewSyncProducer([]string{"localhost:29092"}, config)
+	if err != nil {
+		return fmt.Errorf("ошибка создания Kafka producer: %w", err)
+	}
+	defer producer.Close()
+
+	// Сериализуем сообщение в JSON
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("ошибка сериализации сообщения: %w", err)
+	}
+
+	// Создаем сообщение для отправки
+	msg := &sarama.ProducerMessage{
+		Topic: "test1", // Ваш топик
+		Value: sarama.StringEncoder(messageBytes),
+	}
+
+	// Отправляем сообщение в Kafka
+	partition, offset, err := producer.SendMessage(msg)
+	if err != nil {
+		return fmt.Errorf("ошибка отправки сообщения в Kafka: %w", err)
+	}
+
+	log.Printf("Сообщение успешно отправлено в Kafka: partition=%d, offset=%d", partition, offset)
+	return nil
 }

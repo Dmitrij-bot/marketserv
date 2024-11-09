@@ -28,6 +28,7 @@ func New(cfg config.Config) *App {
 }
 
 func (app *App) Start(ctx context.Context) error {
+
 	db := postgres.NewDB(app.cfg.Postgres)
 	redisClient := redis.NewRedisDB(app.cfg.Redis)
 	userRepo := repository.NewUserRepository(db, redisClient)
