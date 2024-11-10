@@ -148,7 +148,7 @@ func (s *UserService) GetCart(ctx context.Context, req *pb.GetCartRequest) (*pb.
 		cartItems = append(cartItems, &pb.CartItem{
 			ProductId: item.ProductID,
 			Quantity:  strconv.Itoa(int(item.ProductQuantity)),
-			Price:     item.ProductPrice,
+			Price:     strconv.FormatFloat(item.ProductPrice, 'f', 2, 64),
 		})
 	}
 

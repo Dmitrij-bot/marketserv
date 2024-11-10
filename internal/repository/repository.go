@@ -10,7 +10,6 @@ import (
 	"github.com/Dmitrij-bot/marketserv/pkg/redis"
 	redis2 "github.com/go-redis/redis/v8"
 	"log"
-	"strconv"
 )
 
 type UserRepository struct {
@@ -85,7 +84,7 @@ func (r *UserRepository) CreateCartIfNotExists(ctx context.Context, req CreateCa
 }
 
 func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
-	log.Printf("Initial Client ID: %d", req.ClientId)
+	log.Printf("Received request: ProductID=%d, Quantity=%d, Price=%f", req.ProductID, req.Quantity, req.Price)
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
 	var cartItems []CartItem
 
@@ -114,7 +113,14 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 		req.CartId = cartResp.CartId
 	}
 
-	updateOrAddItem(&cartItems, req.ProductID, req.Quantity, req.Price)
+	var productPrice float64
+	err = r.db.QueryRowContext(ctx, "SELECT price FROM products WHERE id = $1", req.ProductID).Scan(&productPrice)
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to retrieve product price: %w", err)
+	}
+
+	log.Printf("Adding item to cart: ProductID=%d, Quantity=%d, Price=%f", req.ProductID, req.Quantity, productPrice)
+	updateOrAddItem(&cartItems, req.ProductID, req.Quantity, productPrice)
 
 	updateCartData, err := json.Marshal(cartItems)
 	if err != nil {
@@ -142,7 +148,7 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 	return AddItemToCartResponse{Success: true}, nil
 }
 
-func updateOrAddItem(cartItems *[]CartItem, productID int32, quantity int32, price int32) {
+func updateOrAddItem(cartItems *[]CartItem, productID int32, quantity int32, price float64) {
 	for i, item := range *cartItems {
 		if item.ProductID == productID {
 			(*cartItems)[i].ProductQuantity += quantity
@@ -152,7 +158,7 @@ func updateOrAddItem(cartItems *[]CartItem, productID int32, quantity int32, pri
 	*cartItems = append(*cartItems, CartItem{
 		ProductID:       productID,
 		ProductQuantity: quantity,
-		ProductPrice:    string(price),
+		ProductPrice:    price,
 	})
 }
 
@@ -230,7 +236,6 @@ func decreaseItemQuantity(cartItems []CartItem, productID int32) ([]CartItem, bo
 }
 
 func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error) {
-	log.Printf("Initial Client ID: %d", req.ClientId)
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
 
 	log.Printf("Attempting to fetch cart from Redis with key: %s", redisKey)
@@ -285,16 +290,11 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 				return resp, fmt.Errorf("failed to scan product for cart_id %d: %w", req.CartId, err)
 			}
 
-			productPrice, err := strconv.ParseFloat(cartItem.ProductPrice, 64)
-			if err != nil {
-				log.Printf("Error parsing price for ProductID %d: %v", cartItem.ProductID, err)
-				return resp, fmt.Errorf("error parsing price for ProductID %d: %v", cartItem.ProductID, err)
-			}
-
+			productPrice := cartItem.ProductPrice
 			log.Printf("Scanned item: ProductID=%d, Quantity=%d, Price=%.2f", cartItem.ProductID, cartItem.ProductQuantity, productPrice)
 
 			resp.CartItems = append(resp.CartItems, cartItem)
-			totalPrice += productPrice * float64(cartItem.ProductQuantity) // Подсчет общей стоимости
+			totalPrice += productPrice * float64(cartItem.ProductQuantity)
 		}
 
 		if err := rows.Err(); err != nil {
@@ -310,11 +310,7 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 		}
 	} else {
 		for _, item := range resp.CartItems {
-			productPrice, err := strconv.ParseFloat(item.ProductPrice, 64)
-			if err != nil {
-				log.Printf("Error parsing price for ProductID %d: %v", item.ProductID, err)
-				return resp, fmt.Errorf("error parsing price for ProductID %d: %v", item.ProductID, err)
-			}
+			productPrice := float64(item.ProductPrice)
 			totalPrice += productPrice * float64(item.ProductQuantity)
 		}
 	}
@@ -339,8 +335,20 @@ func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest
 		return resp, fmt.Errorf("платёж не выполнен: возможно, недостаточно средств на счёте")
 	}
 
-	resp = PaymentResponse{Success: true}
+	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
+	emptyCartData, err := json.Marshal([]CartItem{}) // Пустой массив товаров
+	if err != nil {
+		return resp, fmt.Errorf("ошибка сериализации пустой корзины: %v", err)
+	}
 
+	err = r.redisClient.Client.Set(ctx, redisKey, emptyCartData, 0).Err()
+	if err != nil {
+		log.Printf("Ошибка очистки содержимого корзины в Redis для Client ID %d: %v", req.ClientId, err)
+	} else {
+		log.Printf("Содержимое корзины успешно очищено в Redis для Client ID %d", req.ClientId)
+	}
+
+	resp = PaymentResponse{Success: true}
 	return resp, nil
 
 }

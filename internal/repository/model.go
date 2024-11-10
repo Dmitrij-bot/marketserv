@@ -34,11 +34,11 @@ type CreateCartIfNotExistsResponse struct {
 }
 
 type AddItemToCartRequest struct {
-	ClientId  int32 `json:"client_id" db:"client_id"`
-	CartId    int32 `json:"cart_id" db:"cart_id"`
-	ProductID int32 `json:"product_id" db:"product_id"`
-	Quantity  int32 `json:"quantity" db:"quantity"`
-	Price     int32 `json:"price" db:"price"`
+	ClientId  int32   `json:"client_id" db:"client_id"`
+	CartId    int32   `json:"cart_id" db:"cart_id"`
+	ProductID int32   `json:"product_id" db:"product_id"`
+	Quantity  int32   `json:"quantity" db:"quantity"`
+	Price     float64 `json:"price" db:"price"`
 }
 
 type AddItemToCartResponse struct {
@@ -61,9 +61,9 @@ type GetCartRequest struct {
 }
 
 type CartItem struct {
-	ProductID       int32  `json:"id" db:"id"`
-	ProductQuantity int32  `json:"quantity" db:"quantity"`
-	ProductPrice    string `json:"price" db:"price"`
+	ProductID       int32   `json:"id" db:"id"`
+	ProductQuantity int32   `json:"quantity" db:"quantity"`
+	ProductPrice    float64 `json:"price" db:"price"`
 }
 
 type GetCartResponse struct {

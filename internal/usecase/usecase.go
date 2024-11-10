@@ -82,10 +82,6 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add to cart: %w", err)
 	}
 
-	if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("ошибка сериализации сообщения: %w", err)
-	}
-
 	if addResp.Success {
 
 		message := fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
@@ -114,6 +110,19 @@ func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFrom
 		})
 	if err != nil {
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete from cart: %w", err)
+	}
+
+	if deleteResp.Success {
+
+		message := fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
+			req.ClientId, req.ProductID)
+
+		err := u.sendKafkaMessage(message)
+		if err != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", req)
+		}
 	}
 
 	return DeleteItemFromCartResponse{
@@ -146,6 +155,23 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 		})
 	}
 
+	responseBytes, err := json.Marshal(GetCartResponse{
+		CartItems:  cartItems,
+		TotalPrice: getResp.TotalPrice,
+	})
+	if err != nil {
+		log.Printf("Ошибка сериализации ответа GetCartResponse: %v", err)
+		return GetCartResponse{}, fmt.Errorf("ошибка сериализации ответа: %w", err)
+	}
+
+	message := fmt.Sprintf("Данные корзины: %s", string(responseBytes))
+	err = u.sendKafkaMessage(message)
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+	} else {
+		log.Printf("Сообщение отправлено в Kafka: %s", message)
+	}
+
 	log.Printf("Returning from GetCart: CartItems - %v, TotalPrice - %s", cartItems, getResp.TotalPrice)
 
 	return GetCartResponse{
@@ -163,6 +189,19 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 		})
 	if err != nil {
 		return PaymentResponse{Success: false}, fmt.Errorf("failed to payment: %w", err)
+	}
+
+	if paymentResp.Success {
+
+		message := fmt.Sprintf("Товар успешно оплачен {\"client_id\":%d}",
+			req.ClientId)
+
+		err := u.sendKafkaMessage(message)
+		if err != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", req)
+		}
 	}
 
 	return PaymentResponse{
@@ -190,7 +229,7 @@ func (u *UserUseCase) sendKafkaMessage(message interface{}) error {
 
 	// Создаем сообщение для отправки
 	msg := &sarama.ProducerMessage{
-		Topic: "test1", // Ваш топик
+		Topic: "test1",
 		Value: sarama.StringEncoder(messageBytes),
 	}
 
