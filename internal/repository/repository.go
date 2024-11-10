@@ -336,7 +336,7 @@ func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest
 	}
 
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
-	emptyCartData, err := json.Marshal([]CartItem{}) // Пустой массив товаров
+	emptyCartData, err := json.Marshal([]CartItem{})
 	if err != nil {
 		return resp, fmt.Errorf("ошибка сериализации пустой корзины: %v", err)
 	}

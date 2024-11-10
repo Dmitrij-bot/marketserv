@@ -188,7 +188,16 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 			ClientId: req.ClientId,
 		})
 	if err != nil {
-		return PaymentResponse{Success: false}, fmt.Errorf("failed to payment: %w", err)
+		if err.Error() == "платёж не выполнен: возможно, недостаточно средств на счёте" {
+			message := fmt.Sprintf("Недостаточно средств для клиента %d для выполнения платежа", req.ClientId)
+			err := u.sendKafkaMessage(message)
+			if err != nil {
+				log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+			} else {
+				log.Printf("Событие отправлено в Kafka: %v", req)
+			}
+		}
+		return PaymentResponse{Success: false}, fmt.Errorf("ошибка выполнения платежа: %w", err)
 	}
 
 	if paymentResp.Success {
