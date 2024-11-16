@@ -13,6 +13,19 @@ type UserUseCase struct {
 	r repository.Interface
 }
 
+type PaymentEvent struct {
+	ClientID int    `json:"client_id"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
+}
+
+type GetCartEvent struct {
+	ClientID   int        `json:"client_id"`
+	CartItems  []CartItem `json:"cart_items"`
+	TotalPrice string     `json:"total_price"`
+	Message    string     `json:"message"`
+}
+
 func New(r repository.Interface) *UserUseCase {
 	return &UserUseCase{
 		r: r,
@@ -87,7 +100,7 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 		message := fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
 			req.ClientId, req.ProductID, req.Quantity)
 
-		err := u.sendKafkaMessage(message)
+		err := u.sendKafkaMessage(message, "InsufficientBalance")
 		if err != nil {
 			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
 		} else {
@@ -117,7 +130,7 @@ func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFrom
 		message := fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
 			req.ClientId, req.ProductID)
 
-		err := u.sendKafkaMessage(message)
+		err := u.sendKafkaMessage(message, "InsufficientBalance")
 		if err != nil {
 			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
 		} else {
@@ -135,14 +148,12 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 	if req.ClientId == 0 {
 		return GetCartResponse{}, fmt.Errorf("invalid user_id: %d", req.ClientId)
 	}
-	log.Printf("Received GetCart request for user_id: %d", req.ClientId)
 
 	getResp, err := u.r.GetCart(
 		ctx,
 		repository.GetCartRequest{
 			ClientId: req.ClientId})
 	if err != nil {
-		log.Printf("Error fetching cart for user_id %d: %v", req.ClientId, err)
 		return GetCartResponse{}, fmt.Errorf("usecase: failed to get cart for user_id %d: %v", req.ClientId, err)
 	}
 
@@ -155,24 +166,19 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 		})
 	}
 
-	responseBytes, err := json.Marshal(GetCartResponse{
+	cartEvent := GetCartEvent{
+		ClientID:   int(req.ClientId),
 		CartItems:  cartItems,
 		TotalPrice: getResp.TotalPrice,
-	})
-	if err != nil {
-		log.Printf("Ошибка сериализации ответа GetCartResponse: %v", err)
-		return GetCartResponse{}, fmt.Errorf("ошибка сериализации ответа: %w", err)
+		Message:    fmt.Sprintf("Корзина для клиента %d успешно получена", req.ClientId),
 	}
 
-	message := fmt.Sprintf("Данные корзины: %s", string(responseBytes))
-	err = u.sendKafkaMessage(message)
+	err = u.sendKafkaMessage(cartEvent, "GetCartTrue")
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
 	} else {
-		log.Printf("Сообщение отправлено в Kafka: %s", message)
+		log.Printf("Событие отправлено в Kafka: %v", cartEvent)
 	}
-
-	log.Printf("Returning from GetCart: CartItems - %v, TotalPrice - %s", cartItems, getResp.TotalPrice)
 
 	return GetCartResponse{
 		CartItems:  cartItems,
@@ -189,27 +195,33 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 		})
 	if err != nil {
 		if err.Error() == "платёж не выполнен: возможно, недостаточно средств на счёте" {
-			message := fmt.Sprintf("Недостаточно средств для клиента %d для выполнения платежа", req.ClientId)
-			err := u.sendKafkaMessage(message)
-			if err != nil {
-				log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+			paymentEvent := PaymentEvent{
+				ClientID: int(req.ClientId),
+				Status:   "insufficient_balance",
+				Message:  fmt.Sprintf("Недостаточно средств для клиента %d", req.ClientId),
+			}
+
+			sendErr := u.sendKafkaMessage(paymentEvent, "InsufficientBalance")
+			if sendErr != nil {
+				log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
 			} else {
-				log.Printf("Событие отправлено в Kafka: %v", req)
+				log.Printf("Событие отправлено в Kafka: %v", paymentEvent)
 			}
 		}
 		return PaymentResponse{Success: false}, fmt.Errorf("ошибка выполнения платежа: %w", err)
 	}
 
 	if paymentResp.Success {
-
-		message := fmt.Sprintf("Товар успешно оплачен {\"client_id\":%d}",
-			req.ClientId)
-
-		err := u.sendKafkaMessage(message)
-		if err != nil {
-			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		paymentEvent := PaymentEvent{
+			ClientID: int(req.ClientId),
+			Status:   "payment_success",
+			Message:  fmt.Sprintf("Товар успешно оплачен клиентом %d", req.ClientId),
+		}
+		sendErr := u.sendKafkaMessage(paymentEvent, "InsufficientBalance")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
 		} else {
-			log.Printf("Событие отправлено в Kafka: %v", req)
+			log.Printf("Событие отправлено в Kafka: %v", paymentEvent)
 		}
 	}
 
@@ -218,31 +230,29 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 	}, nil
 }
 
-func (u *UserUseCase) sendKafkaMessage(message interface{}) error {
-	// Настройки продюсера Kafka
+func (u *UserUseCase) sendKafkaMessage(event interface{}, key string) error {
+
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 
-	// Создаем синхронного продюсера
 	producer, err := sarama.NewSyncProducer([]string{"localhost:29092"}, config)
 	if err != nil {
 		return fmt.Errorf("ошибка создания Kafka producer: %w", err)
 	}
 	defer producer.Close()
 
-	// Сериализуем сообщение в JSON
-	messageBytes, err := json.Marshal(message)
+	messageBytes, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("ошибка сериализации сообщения: %w", err)
 	}
 
-	// Создаем сообщение для отправки
 	msg := &sarama.ProducerMessage{
 		Topic: "test1",
-		Value: sarama.StringEncoder(messageBytes),
+		//Key:   sarama.StringEncoder("InsufficientBalance"),
+		Key:   sarama.StringEncoder(key),
+		Value: sarama.StringEncoder(string(messageBytes)),
 	}
 
-	// Отправляем сообщение в Kafka
 	partition, offset, err := producer.SendMessage(msg)
 	if err != nil {
 		return fmt.Errorf("ошибка отправки сообщения в Kafka: %w", err)
