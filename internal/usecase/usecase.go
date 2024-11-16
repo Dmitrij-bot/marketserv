@@ -7,15 +7,28 @@ import (
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
 	"github.com/IBM/sarama"
 	"log"
+	"strconv"
 )
 
 type UserUseCase struct {
 	r repository.Interface
 }
 
-type PaymentEvent struct {
+type SearchProductEvent struct {
+	ProductName string    `json:"product_name"`
+	Products    []Product `json:"products"`
+	Message     string    `json:"message"`
+}
+
+type AddEvent struct {
+	ClientID  int    `json:"client_id"`
+	ProductID int32  `json:"product_id" db:"product_id"`
+	Quantity  int32  `json:"quantity" db:"quantity"`
+	Message   string `json:"message"`
+}
+
+type DeleteEvent struct {
 	ClientID int    `json:"client_id"`
-	Status   string `json:"status"`
 	Message  string `json:"message"`
 }
 
@@ -24,6 +37,12 @@ type GetCartEvent struct {
 	CartItems  []CartItem `json:"cart_items"`
 	TotalPrice string     `json:"total_price"`
 	Message    string     `json:"message"`
+}
+
+type PaymentEvent struct {
+	ClientID int    `json:"client_id"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
 }
 
 func New(r repository.Interface) *UserUseCase {
@@ -75,6 +94,37 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 		})
 	}
 
+	if len(products) == 0 {
+
+		emptySearchEvent := SearchProductEvent{
+			ProductName: req.ProductName,
+			Products:    nil,
+			Message:     fmt.Sprintf("Продукты по запросу '%s' не найдены", req.ProductName),
+		}
+
+		err = u.sendKafkaMessage(emptySearchEvent, "SearchProductFalse")
+		if err != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", emptySearchEvent)
+		}
+
+		return SearchProductByNameResponse{}, fmt.Errorf("продукты по запросу '%s' не найдены", req.ProductName)
+	}
+
+	searchEvent := SearchProductEvent{
+		ProductName: req.ProductName,
+		Products:    products,
+		Message:     fmt.Sprintf("Продукты по запросу '%s' успешно найдены", req.ProductName),
+	}
+
+	sendErr := u.sendKafkaMessage(searchEvent, "SearchProductTrue")
+	if sendErr != nil {
+		log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
+	} else {
+		log.Printf("Событие отправлено в Kafka: %v", searchEvent)
+	}
+
 	return SearchProductByNameResponse{
 		Products: products,
 	}, nil
@@ -92,19 +142,40 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 		})
 
 	if err != nil {
+
+		addEvent := AddEvent{
+			ClientID:  int(req.ClientId),
+			ProductID: req.ProductID,
+			Quantity:  req.Quantity,
+			Message: fmt.Sprintf("Ошибка добавления товара в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
+				req.ClientId, req.ProductID, req.Quantity),
+		}
+
+		sendErr := u.sendKafkaMessage(addEvent, "AddItemFalse")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", addEvent)
+		}
+
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add to cart: %w", err)
 	}
 
 	if addResp.Success {
 
-		message := fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
-			req.ClientId, req.ProductID, req.Quantity)
+		addEvent := AddEvent{
+			ClientID:  int(req.ClientId),
+			ProductID: req.ProductID,
+			Quantity:  req.Quantity,
+			Message: fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
+				req.ClientId, req.ProductID, req.Quantity),
+		}
 
-		err := u.sendKafkaMessage(message, "InsufficientBalance")
-		if err != nil {
-			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		sendErr := u.sendKafkaMessage(addEvent, "AddItemTrue")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
 		} else {
-			log.Printf("Событие отправлено в Kafka: %v", req)
+			log.Printf("Событие отправлено в Kafka: %v", addEvent)
 		}
 	}
 
@@ -122,19 +193,35 @@ func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFrom
 			ProductID: req.ProductID,
 		})
 	if err != nil {
+		deleteEvent := DeleteEvent{
+			ClientID: int(req.ClientId),
+			Message: fmt.Sprintf("Ошибка удаления товара из корзины {\"client_id\":%d,\"product_id\":%d}",
+				req.ClientId, req.ProductID),
+		}
+
+		sendErr := u.sendKafkaMessage(deleteEvent, "DeleteItemFalse")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения об ошибке в Kafka: %v", sendErr)
+		} else {
+			log.Printf("Событие отправлено в Kafka: %v", deleteEvent)
+		}
+
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete from cart: %w", err)
 	}
 
 	if deleteResp.Success {
 
-		message := fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
-			req.ClientId, req.ProductID)
+		deleteEvent := DeleteEvent{
+			ClientID: int(req.ClientId),
+			Message: fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
+				req.ClientId, req.ProductID),
+		}
 
-		err := u.sendKafkaMessage(message, "InsufficientBalance")
-		if err != nil {
-			log.Printf("Ошибка отправки сообщения в Kafka: %v", err)
+		sendErr := u.sendKafkaMessage(deleteEvent, "DeleteItemTrue")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
 		} else {
-			log.Printf("Событие отправлено в Kafka: %v", req)
+			log.Printf("Событие отправлено в Kafka: %v", deleteEvent)
 		}
 	}
 
@@ -154,6 +241,21 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 		repository.GetCartRequest{
 			ClientId: req.ClientId})
 	if err != nil {
+
+		cartErrorEvent := GetCartEvent{
+			ClientID:   int(req.ClientId),
+			CartItems:  nil,
+			TotalPrice: strconv.Itoa(0),
+			Message:    fmt.Sprintf("Ошибка получения корзины для клиента %d: %v", req.ClientId, err),
+		}
+
+		sendErr := u.sendKafkaMessage(cartErrorEvent, "GetCartFalse")
+		if sendErr != nil {
+			log.Printf("Ошибка отправки сообщения об ошибке в Kafka: %v", sendErr)
+		} else {
+			log.Printf("Событие об ошибке отправлено в Kafka: %v", cartErrorEvent)
+		}
+
 		return GetCartResponse{}, fmt.Errorf("usecase: failed to get cart for user_id %d: %v", req.ClientId, err)
 	}
 
@@ -248,7 +350,6 @@ func (u *UserUseCase) sendKafkaMessage(event interface{}, key string) error {
 
 	msg := &sarama.ProducerMessage{
 		Topic: "test1",
-		//Key:   sarama.StringEncoder("InsufficientBalance"),
 		Key:   sarama.StringEncoder(key),
 		Value: sarama.StringEncoder(string(messageBytes)),
 	}
