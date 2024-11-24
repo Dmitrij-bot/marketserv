@@ -352,3 +352,54 @@ func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest
 	return resp, nil
 
 }
+
+func (r *UserRepository) SaveKafkaMessage(ctx context.Context, req SaveKafkaMessageRequest) (resp SaveKafkaMessageResponse, err error) {
+
+	kafkaMessage, err := json.Marshal(req.KafkaMessage)
+	if err != nil {
+		return resp, fmt.Errorf("failed to serialize Kafka message: %w", err)
+	}
+
+	query := `
+		INSERT INTO events (kafka_key, kafka_message, status, created_at)
+		VALUES ($1, $2, DEFAULT, DEFAULT)
+	`
+
+	_, err = r.db.ExecContext(ctx, query, req.KafkaKey, string(kafkaMessage))
+	if err != nil {
+		return SaveKafkaMessageResponse{Success: false}, fmt.Errorf("failed to save Kafka message: %w", err)
+	}
+
+	return SaveKafkaMessageResponse{Success: true}, nil
+}
+
+func (r *UserRepository) GetKafkaMessage() (resp GetKafkaMessageResponse, err error) {
+
+	row := r.db.QueryRow("SELECT id, kafka_key, kafka_message FROM events WHERE status = 'new' LIMIT 1")
+
+	err = row.Scan(&resp.ID, &resp.Key, &resp.Message)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return GetKafkaMessageResponse{}, nil
+		}
+		return GetKafkaMessageResponse{}, fmt.Errorf(" %s, %w", err)
+	}
+
+	return GetKafkaMessageResponse{
+		ID:      resp.ID,
+		Key:     resp.Key,
+		Message: resp.Message,
+	}, nil
+}
+
+func (r *UserRepository) SetDone(id int) error {
+
+	query := "UPDATE events SET status = 'done' WHERE id = $1"
+	_, err := r.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to execute update for id %d: %w", id, err)
+	}
+
+	return nil
+
+}

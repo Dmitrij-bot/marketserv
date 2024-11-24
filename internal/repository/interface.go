@@ -10,4 +10,7 @@ type Interface interface {
 	DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error)
 	GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error)
 	SimulatePayment(ctx context.Context, req PaymentRequest) (resp PaymentResponse, err error)
+	SaveKafkaMessage(ctx context.Context, req SaveKafkaMessageRequest) (resp SaveKafkaMessageResponse, err error)
+	GetKafkaMessage() (resp GetKafkaMessageResponse, err error)
+	SetDone(id int) error
 }

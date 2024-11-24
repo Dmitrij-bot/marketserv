@@ -171,12 +171,25 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 				req.ClientId, req.ProductID, req.Quantity),
 		}
 
-		sendErr := u.sendKafkaMessage(addEvent, "AddItemTrue")
+		saveEvent, err := u.r.SaveKafkaMessage(
+			ctx,
+			repository.SaveKafkaMessageRequest{
+				KafkaMessage: addEvent,
+				KafkaKey:     "AddItemTrue",
+			})
+
+		if err != nil {
+			log.Printf("Ошибка сохранения сообщения: %v", err)
+		} else {
+			log.Printf("событие сохранено: %v", saveEvent)
+		}
+
+		/*sendErr := u.sendKafkaMessage(addEvent, "AddItemTrue")
 		if sendErr != nil {
 			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
 		} else {
 			log.Printf("Событие отправлено в Kafka: %v", addEvent)
-		}
+		}*/
 	}
 
 	return AddItemToCartResponse{

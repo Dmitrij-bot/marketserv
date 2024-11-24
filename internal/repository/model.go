@@ -79,3 +79,18 @@ type PaymentResponse struct {
 	Success bool `json:"payment success"`
 	Message string
 }
+
+type SaveKafkaMessageRequest struct {
+	KafkaKey     string
+	KafkaMessage interface{}
+}
+
+type SaveKafkaMessageResponse struct {
+	Success bool `json:"save success"`
+}
+
+type GetKafkaMessageResponse struct {
+	ID      int
+	Key     string
+	Message string
+}

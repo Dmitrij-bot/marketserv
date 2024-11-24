@@ -8,10 +8,12 @@ import (
 	grpc2 "github.com/Dmitrij-bot/marketserv/internal/grpc"
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
 	"github.com/Dmitrij-bot/marketserv/internal/usecase"
+	"github.com/Dmitrij-bot/marketserv/pkg/kafkaSender"
 	"github.com/Dmitrij-bot/marketserv/pkg/lyfecycle"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
 	"github.com/Dmitrij-bot/marketserv/pkg/redis"
 	"log"
+	"time"
 )
 
 type App struct {
@@ -42,6 +44,9 @@ func (app *App) Start(ctx context.Context) error {
 		cmp{grpcServer, "grpcServ"},
 		cmp{redisClient, "redisClient"},
 	)
+
+	sender := kafkaSender.NewSender(userRepo)
+	sender.Start(5 * time.Second)
 
 	okCh, errCh := make(chan struct{}), make(chan error)
 
