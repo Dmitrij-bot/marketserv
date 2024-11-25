@@ -365,7 +365,7 @@ func (r *UserRepository) SaveKafkaMessage(ctx context.Context, req SaveKafkaMess
 		VALUES ($1, $2, DEFAULT, DEFAULT)
 	`
 
-	_, err = r.db.ExecContext(ctx, query, req.KafkaKey, string(kafkaMessage))
+	_, err = r.db.ExecContext(ctx, query, req.KafkaKey, kafkaMessage)
 	if err != nil {
 		return SaveKafkaMessageResponse{Success: false}, fmt.Errorf("failed to save Kafka message: %w", err)
 	}

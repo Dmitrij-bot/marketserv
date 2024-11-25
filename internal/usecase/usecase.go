@@ -312,15 +312,20 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 		if err.Error() == "платёж не выполнен: возможно, недостаточно средств на счёте" {
 			paymentEvent := PaymentEvent{
 				ClientID: int(req.ClientId),
-				Status:   "insufficient_balance",
 				Message:  fmt.Sprintf("Недостаточно средств для клиента %d", req.ClientId),
 			}
 
-			sendErr := u.sendKafkaMessage(paymentEvent, "InsufficientBalance")
-			if sendErr != nil {
-				log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
+			saveEvent, err := u.r.SaveKafkaMessage(
+				ctx,
+				repository.SaveKafkaMessageRequest{
+					KafkaMessage: paymentEvent,
+					KafkaKey:     "SimulatePaymentFalse",
+				})
+
+			if err != nil {
+				log.Printf("Ошибка сохранения сообщения: %v", err)
 			} else {
-				log.Printf("Событие отправлено в Kafka: %v", paymentEvent)
+				log.Printf("событие сохранено: %v", saveEvent)
 			}
 		}
 		return PaymentResponse{Success: false}, fmt.Errorf("ошибка выполнения платежа: %w", err)
@@ -329,15 +334,22 @@ func (u *UserUseCase) SimulatePayment(ctx context.Context, req PaymentRequest) (
 	if paymentResp.Success {
 		paymentEvent := PaymentEvent{
 			ClientID: int(req.ClientId),
-			Status:   "payment_success",
 			Message:  fmt.Sprintf("Товар успешно оплачен клиентом %d", req.ClientId),
 		}
-		sendErr := u.sendKafkaMessage(paymentEvent, "InsufficientBalance")
-		if sendErr != nil {
-			log.Printf("Ошибка отправки сообщения в Kafka: %v", sendErr)
+
+		saveEvent, err := u.r.SaveKafkaMessage(
+			ctx,
+			repository.SaveKafkaMessageRequest{
+				KafkaMessage: paymentEvent,
+				KafkaKey:     "SimulatePaymentTrue",
+			})
+
+		if err != nil {
+			log.Printf("Ошибка сохранения сообщения: %v", err)
 		} else {
-			log.Printf("Событие отправлено в Kafka: %v", paymentEvent)
+			log.Printf("событие сохранено: %v", saveEvent)
 		}
+
 	}
 
 	return PaymentResponse{
