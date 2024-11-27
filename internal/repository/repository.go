@@ -71,20 +71,43 @@ func (r *UserRepository) CreateCartIfNotExists(ctx context.Context, req CreateCa
 	err = r.db.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&resp.CartId)
 
 	if err == sql.ErrNoRows {
-		err := r.db.QueryRowContext(ctx, CreateCartIfNotExistsSQL, req.ClientId).Scan(&resp.CartId)
+		log.Printf("Cart not found for Client ID: %d, creating new cart", req.ClientId)
 
+		err := r.db.QueryRowContext(ctx, CreateCartIfNotExistsSQL, req.ClientId).Scan(&resp.CartId)
 		if err != nil {
 			return resp, fmt.Errorf("failed to create cart: %w", err)
 		}
+		log.Printf("Successfully created cart for Client ID: %d, Cart ID: %d", req.ClientId, resp.CartId)
 	} else if err != nil {
 		return resp, fmt.Errorf("failed to retrieve cart: %w", err)
 	}
-
+	log.Printf("Cart found for Client ID: %d, Cart ID: %d", req.ClientId, resp.CartId)
 	return resp, nil
 }
 
 func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
-	log.Printf("Received request: ProductID=%d, Quantity=%d, Price=%f", req.ProductID, req.Quantity, req.Price)
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if err != nil {
+			rollbackErr := tx.Rollback()
+			log.Println("rollback:", err)
+			if rollbackErr != nil {
+				err = fmt.Errorf("rollback failed: %w, original error: %v", rollbackErr, err)
+			}
+			return
+		}
+
+		commitErr := tx.Commit()
+		if commitErr != nil {
+			err = fmt.Errorf("commit failed: %w", commitErr)
+		}
+	}()
+
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
 	var cartItems []CartItem
 
@@ -103,7 +126,7 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 	}
 
 	if req.CartId == 0 {
-		log.Printf("Creating cart for Client ID: %d", req.ClientId)
+		log.Printf("Searching  cart for Client ID: %d", req.ClientId)
 		cartResp, err := r.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
 			ClientId: req.ClientId,
 		})
@@ -114,34 +137,62 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 	}
 
 	var productPrice float64
-	err = r.db.QueryRowContext(ctx, "SELECT price FROM products WHERE id = $1", req.ProductID).Scan(&productPrice)
-	if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to retrieve product price: %w", err)
+	var stockQuantity int32
+	err = tx.QueryRowContext(ctx, "SELECT price, quantity FROM products WHERE id = $1", req.ProductID).Scan(&productPrice, &stockQuantity)
+	if err == sql.ErrNoRows {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("product with ID %d not found", req.ProductID)
+	} else if err != nil {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to retrieve product data: %w", err)
 	}
 
-	log.Printf("Adding item to cart: ProductID=%d, Quantity=%d, Price=%f", req.ProductID, req.Quantity, productPrice)
+	if stockQuantity < req.Quantity {
+		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock for product ID %d", req.ProductID)
+	}
+
 	updateOrAddItem(&cartItems, req.ProductID, req.Quantity, productPrice)
 
 	updateCartData, err := json.Marshal(cartItems)
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to marshal cart items: %w", err)
 	}
-	log.Printf("Updating cart data in Redis: %s", updateCartData)
-	result1 := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0)
-	if err := result1.Err(); err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to save cart to Redis: %w", err)
-	}
+	defer func() {
+		if err == nil {
+			log.Printf("Updating cart data in Redis: %s", updateCartData)
+			result1 := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0)
+			if err := result1.Err(); err != nil {
+				log.Printf("failed to save cart to Redis: %v", err)
+			}
+		}
+	}()
 
-	result, err := r.db.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
+	result, err := tx.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add item to cart: %w", err)
 	}
 
-	log.Printf("Successfully saved cart to Redis for Client ID: %d with key: %s", req.ClientId, redisKey)
-
 	affectedRows, _ := result.RowsAffected()
 	if affectedRows == 0 {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock")
+	}
+
+	addEvent := AddEvent{
+		ClientID:  int(req.ClientId),
+		ProductID: req.ProductID,
+		Quantity:  req.Quantity,
+		Message: fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
+			req.ClientId, req.ProductID, req.Quantity),
+	}
+
+	if err := r.SaveKafkaMessage2(
+		ctx,
+		tx,
+		SaveKafkaMessageRequest{
+			KafkaMessage: addEvent,
+			KafkaKey:     "AddItemTrue",
+		}); err != nil {
+		log.Printf("Ошибка сохранения сообщения: %v", err)
+	} else {
+		log.Printf("событие сохранено: %v", SaveKafkaMessageRequest{KafkaMessage: addEvent})
 	}
 
 	log.Printf("Item successfully added to cart for Client ID: %d", req.ClientId)
@@ -402,4 +453,24 @@ func (r *UserRepository) SetDone(id int) error {
 
 	return nil
 
+}
+
+func (r *UserRepository) SaveKafkaMessage2(ctx context.Context, tx *sql.Tx, req SaveKafkaMessageRequest) error {
+
+	kafkaMessage, err := json.Marshal(req.KafkaMessage)
+	if err != nil {
+		return fmt.Errorf("failed to serialize Kafka message: %w", err)
+	}
+
+	query := `
+		INSERT INTO events (kafka_key, kafka_message, status, created_at)
+		VALUES ($1, $2, DEFAULT, DEFAULT)
+	`
+
+	_, err = tx.ExecContext(ctx, query, req.KafkaKey, kafkaMessage)
+	if err != nil {
+		return fmt.Errorf("failed to save Kafka message: %w", err)
+	}
+
+	return nil
 }

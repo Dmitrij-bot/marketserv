@@ -94,3 +94,10 @@ type GetKafkaMessageResponse struct {
 	Key     string
 	Message string
 }
+
+type AddEvent struct {
+	ClientID  int    `json:"client_id"`
+	ProductID int32  `json:"product_id" db:"product_id"`
+	Quantity  int32  `json:"quantity" db:"quantity"`
+	Message   string `json:"message"`
+}
