@@ -5,36 +5,10 @@ import (
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/internal/repository"
 	"log"
-	"strconv"
 )
 
 type UserUseCase struct {
 	r repository.Interface
-}
-
-type SearchProductEvent struct {
-	ProductName string    `json:"product_name"`
-	Products    []Product `json:"products"`
-	Message     string    `json:"message"`
-}
-
-type AddEvent struct {
-	ClientID  int    `json:"client_id"`
-	ProductID int32  `json:"product_id" db:"product_id"`
-	Quantity  int32  `json:"quantity" db:"quantity"`
-	Message   string `json:"message"`
-}
-
-type DeleteEvent struct {
-	ClientID int    `json:"client_id"`
-	Message  string `json:"message"`
-}
-
-type GetCartEvent struct {
-	ClientID   int        `json:"client_id"`
-	CartItems  []CartItem `json:"cart_items"`
-	TotalPrice string     `json:"total_price"`
-	Message    string     `json:"message"`
 }
 
 type PaymentEvent struct {
@@ -92,49 +66,6 @@ func (u *UserUseCase) SearchProductByName(ctx context.Context, req SearchProduct
 		})
 	}
 
-	if len(products) == 0 {
-
-		emptySearchEvent := SearchProductEvent{
-			ProductName: req.ProductName,
-			Products:    nil,
-			Message:     fmt.Sprintf("Продукты по запросу '%s' не найдены", req.ProductName),
-		}
-
-		saveEvent, err := u.r.SaveKafkaMessage(
-			ctx,
-			repository.SaveKafkaMessageRequest{
-				KafkaMessage: emptySearchEvent,
-				KafkaKey:     "SearchProductFalse",
-			})
-
-		if err != nil {
-			log.Printf("Ошибка сохранения сообщения: %v", err)
-		} else {
-			log.Printf("событие сохранено: %v", saveEvent)
-		}
-
-		return SearchProductByNameResponse{}, fmt.Errorf("продукты по запросу '%s' не найдены", req.ProductName)
-	}
-
-	searchEvent := SearchProductEvent{
-		ProductName: req.ProductName,
-		Products:    products,
-		Message:     fmt.Sprintf("Продукты по запросу '%s' успешно найдены", req.ProductName),
-	}
-
-	saveEvent, err := u.r.SaveKafkaMessage(
-		ctx,
-		repository.SaveKafkaMessageRequest{
-			KafkaMessage: searchEvent,
-			KafkaKey:     "SearchProductTrue",
-		})
-
-	if err != nil {
-		log.Printf("Ошибка сохранения сообщения: %v", err)
-	} else {
-		log.Printf("событие сохранено: %v", saveEvent)
-	}
-
 	return SearchProductByNameResponse{
 		Products: products,
 	}, nil
@@ -152,9 +83,7 @@ func (u *UserUseCase) AddItemToCart(ctx context.Context, req AddItemToCartReques
 		})
 
 	if err != nil {
-
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add to cart: %w", err)
-
 	}
 
 	return AddItemToCartResponse{
@@ -171,48 +100,7 @@ func (u *UserUseCase) DeleteItemFromCart(ctx context.Context, req DeleteItemFrom
 			ProductID: req.ProductID,
 		})
 	if err != nil {
-		deleteEvent := DeleteEvent{
-			ClientID: int(req.ClientId),
-			Message: fmt.Sprintf("Ошибка удаления товара из корзины {\"client_id\":%d,\"product_id\":%d}",
-				req.ClientId, req.ProductID),
-		}
-
-		saveEvent, err := u.r.SaveKafkaMessage(
-			ctx,
-			repository.SaveKafkaMessageRequest{
-				KafkaMessage: deleteEvent,
-				KafkaKey:     "DeleteItemFalse",
-			})
-
-		if err != nil {
-			log.Printf("Ошибка сохранения сообщения: %v", err)
-		} else {
-			log.Printf("событие сохранено: %v", saveEvent)
-		}
-
 		return DeleteItemFromCartResponse{Success: false}, fmt.Errorf("failed to delete from cart: %w", err)
-	}
-
-	if deleteResp.Success {
-
-		deleteEvent := DeleteEvent{
-			ClientID: int(req.ClientId),
-			Message: fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
-				req.ClientId, req.ProductID),
-		}
-
-		saveEvent, err := u.r.SaveKafkaMessage(
-			ctx,
-			repository.SaveKafkaMessageRequest{
-				KafkaMessage: deleteEvent,
-				KafkaKey:     "DeleteItemTrue",
-			})
-
-		if err != nil {
-			log.Printf("Ошибка сохранения сообщения: %v", err)
-		} else {
-			log.Printf("событие сохранено: %v", saveEvent)
-		}
 	}
 
 	return DeleteItemFromCartResponse{
@@ -231,27 +119,6 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 		repository.GetCartRequest{
 			ClientId: req.ClientId})
 	if err != nil {
-
-		cartErrorEvent := GetCartEvent{
-			ClientID:   int(req.ClientId),
-			CartItems:  nil,
-			TotalPrice: strconv.Itoa(0),
-			Message:    fmt.Sprintf("Ошибка получения корзины для клиента %d: %v", req.ClientId, err),
-		}
-
-		saveEvent, err := u.r.SaveKafkaMessage(
-			ctx,
-			repository.SaveKafkaMessageRequest{
-				KafkaMessage: cartErrorEvent,
-				KafkaKey:     "GetCartFalse",
-			})
-
-		if err != nil {
-			log.Printf("Ошибка сохранения сообщения: %v", err)
-		} else {
-			log.Printf("событие сохранено: %v", saveEvent)
-		}
-
 		return GetCartResponse{}, fmt.Errorf("usecase: failed to get cart for user_id %d: %v", req.ClientId, err)
 	}
 
@@ -262,26 +129,6 @@ func (u *UserUseCase) GetCart(ctx context.Context, req GetCartRequest) (resp Get
 			ProductQuantity: repoItem.ProductQuantity,
 			ProductPrice:    repoItem.ProductPrice,
 		})
-	}
-
-	cartEvent := GetCartEvent{
-		ClientID:   int(req.ClientId),
-		CartItems:  cartItems,
-		TotalPrice: getResp.TotalPrice,
-		Message:    fmt.Sprintf("Корзина для клиента %d успешно получена", req.ClientId),
-	}
-
-	saveEvent, err := u.r.SaveKafkaMessage(
-		ctx,
-		repository.SaveKafkaMessageRequest{
-			KafkaMessage: cartEvent,
-			KafkaKey:     "GetCartTrue",
-		})
-
-	if err != nil {
-		log.Printf("Ошибка сохранения сообщения: %v", err)
-	} else {
-		log.Printf("событие сохранено: %v", saveEvent)
 	}
 
 	return GetCartResponse{

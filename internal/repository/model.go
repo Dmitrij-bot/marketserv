@@ -95,9 +95,33 @@ type GetKafkaMessageResponse struct {
 	Message string
 }
 
+type SearchProductEvent struct {
+	ProductName string    `json:"product_name"`
+	Products    []Product `json:"products"`
+	Message     string    `json:"message"`
+}
+
 type AddEvent struct {
 	ClientID  int    `json:"client_id"`
 	ProductID int32  `json:"product_id" db:"product_id"`
 	Quantity  int32  `json:"quantity" db:"quantity"`
 	Message   string `json:"message"`
+}
+
+type DeleteEvent struct {
+	ClientID int    `json:"client_id"`
+	Message  string `json:"message"`
+}
+
+type GetCartEvent struct {
+	ClientID   int        `json:"client_id"`
+	CartItems  []CartItem `json:"cart_items"`
+	TotalPrice string     `json:"total_price"`
+	Message    string     `json:"message"`
+}
+
+type PaymentEvent struct {
+	ClientID int    `json:"client_id"`
+	Status   string `json:"status"`
+	Message  string `json:"message"`
 }
