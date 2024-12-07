@@ -25,6 +25,7 @@ func (s *Sender) Start(handlePeriod time.Duration) {
 	ticker := time.NewTicker(handlePeriod)
 
 	go func() {
+
 		for {
 			select {
 			case <-s.stopCh:

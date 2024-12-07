@@ -14,29 +14,33 @@ type DB struct {
 }
 
 func NewDB(config Config) *DB {
-	return &DB{cfg: config}
-}
 
-func (d *DB) Start(ctx context.Context) error {
 	connectionURL := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		d.cfg.DBHost,
-		d.cfg.DBPort,
-		d.cfg.DBUser,
-		d.cfg.DBPassword,
-		d.cfg.DBName,
-		d.cfg.SSLMode,
+		config.DBHost,
+		config.DBPort,
+		config.DBUser,
+		config.DBPassword,
+		config.DBName,
+		config.SSLMode,
 	)
 
 	db, err := sqlx.Open("postgres", connectionURL)
 	if err != nil {
+		fmt.Printf("1")
+	}
+
+	return &DB{
+		cfg: config,
+		DB:  db,
+	}
+}
+
+func (d *DB) Start(ctx context.Context) error {
+
+	if err := d.DB.PingContext(ctx); err != nil {
 		return err
 	}
 
-	if err := db.PingContext(ctx); err != nil {
-		return err
-	}
-
-	d.DB = db
 	return nil
 }
 

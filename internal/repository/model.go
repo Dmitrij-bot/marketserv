@@ -80,6 +80,32 @@ type PaymentResponse struct {
 	Message string
 }
 
+type GetItemPriceRequest struct {
+	ProductID int32 `json:"id"` // Идентификатор товара
+}
+
+type GetItemPriceResponse struct {
+	ProductPrice float64 `json:"price"` // Цена товара
+}
+
+type GetCartFromRedisRequest struct {
+	ClientId int32 `json:"client_id" db:"client_id"`
+}
+
+type GetCartFromRedisResponse struct {
+	RedisKey  string     `json:"redis_key"`
+	CartItems []CartItem `json:"cart_items"`
+}
+
+type SetCartInRedisRequest struct {
+	RedisKey  string     `json:"redis_key"`
+	CartItems []CartItem `json:"cart_items"`
+}
+
+type SetCartInRedisResponse struct {
+	Success bool `json:"Set in Redis success"`
+}
+
 type SaveKafkaMessageRequest struct {
 	KafkaKey     string
 	KafkaMessage interface{}

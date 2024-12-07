@@ -4,6 +4,7 @@ go 1.23.1
 
 require (
 	github.com/IBM/sarama v1.43.3
+	github.com/avito-tech/go-transaction-manager v1.5.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/lib/pq v1.10.9
@@ -30,6 +31,8 @@ require (
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.26.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/sys v0.24.0 // indirect

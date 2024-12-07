@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
 	"github.com/Dmitrij-bot/marketserv/pkg/redis"
+	tx "github.com/avito-tech/go-transaction-manager/sqlx"
 	redis2 "github.com/go-redis/redis/v8"
 	"log"
 )
@@ -15,46 +16,15 @@ import (
 type UserRepository struct {
 	db          *postgres.DB
 	redisClient *redis.RedisDB
+	ctxGetter   *tx.CtxGetter
 }
 
-type TxHandler func(tx *sql.Tx) error
-
-func NewUserRepository(db *postgres.DB, redisClient *redis.RedisDB) *UserRepository {
+func NewUserRepository(db *postgres.DB, redisClient *redis.RedisDB, ctxGetter *tx.CtxGetter) *UserRepository {
 	return &UserRepository{
 		db:          db,
 		redisClient: redisClient,
+		ctxGetter:   ctxGetter,
 	}
-}
-
-func (r *UserRepository) withTransaction(ctx context.Context, handler TxHandler) error {
-
-	tx, err := r.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback()
-			log.Println("rollback:", err)
-			if rollbackErr != nil {
-				err = fmt.Errorf("rollback failed: %w, original error: %v", rollbackErr, err)
-			}
-			return
-		}
-
-		commitErr := tx.Commit()
-		if commitErr != nil {
-			err = fmt.Errorf("commit failed: %w", commitErr)
-		}
-	}()
-
-	err = handler(tx)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *UserRepository) FindClientByUsername(ctx context.Context, req FindClientByUsernameRequest) (resp FindClientByUsernameResponse, err error) {
@@ -71,37 +41,37 @@ func (r *UserRepository) SearchProductByName(ctx context.Context, req SearchProd
 		return SearchProductByNameResponse{}, errors.New("product name cannot be empty")
 	}
 
-	err = r.withTransaction(ctx, func(tx *sql.Tx) error {
+	//err = r.withTransaction(ctx, func(tx *sql.Tx) error {
 
-		rows, err := tx.QueryContext(ctx, SearchProductByNameSQL, req.ProductName)
-		if err != nil {
-			return fmt.Errorf("failed to query products: %w", err)
+	rows, err := r.db.QueryContext(ctx, SearchProductByNameSQL, req.ProductName)
+	if err != nil {
+		return resp, fmt.Errorf("failed to query products: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
 		}
-		defer func() {
-			if closeErr := rows.Close(); closeErr != nil {
-				err = fmt.Errorf("failed to close rows: %w", closeErr)
-			}
-		}()
+	}()
 
-		resp.Products = []Product{}
+	resp.Products = []Product{}
 
-		for rows.Next() {
-			var product Product
-			if err := rows.Scan(&product.ProductID, &product.ProductName, &product.ProductDescription, &product.ProductPrice); err != nil {
-				return fmt.Errorf("failed to scan product: %w", err)
-			}
-			resp.Products = append(resp.Products, product)
+	for rows.Next() {
+		var product Product
+		if err := rows.Scan(&product.ProductID, &product.ProductName, &product.ProductDescription, &product.ProductPrice); err != nil {
+			return resp, fmt.Errorf("failed to scan product: %w", err)
 		}
+		resp.Products = append(resp.Products, product)
+	}
 
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("error occurred during row iteration: %w", err)
-		}
+	if err := rows.Err(); err != nil {
+		return resp, fmt.Errorf("error occurred during row iteration: %w", err)
+	}
 
-		if len(resp.Products) == 0 {
-			return fmt.Errorf("no products found for name: %s", req.ProductName)
-		}
+	if len(resp.Products) == 0 {
+		return resp, fmt.Errorf("no products found for name: %s", req.ProductName)
+	}
 
-		searchEvent := SearchProductEvent{
+	/*searchEvent := SearchProductEvent{
 			ProductName: req.ProductName,
 			Products:    resp.Products,
 			Message:     fmt.Sprintf("Продукты по запросу '%s' успешно найдены", req.ProductName),
@@ -112,7 +82,7 @@ func (r *UserRepository) SearchProductByName(ctx context.Context, req SearchProd
 			tx,
 			SaveKafkaMessageRequest{
 				KafkaMessage: searchEvent,
-				KafkaKey:     SearchProductEventKey,
+				KafkaKey:     usecase.SearchProductEventKey,
 			}); err != nil {
 			log.Printf("Ошибка сохранения сообщения: %v", err)
 		} else {
@@ -124,7 +94,7 @@ func (r *UserRepository) SearchProductByName(ctx context.Context, req SearchProd
 
 	if err != nil {
 		return SearchProductByNameResponse{}, err
-	}
+	}*/
 
 	return resp, nil
 }
@@ -150,85 +120,7 @@ func (r *UserRepository) CreateCartIfNotExists(ctx context.Context, req CreateCa
 
 func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartRequest) (resp AddItemToCartResponse, err error) {
 
-	tx, err := r.db.Begin()
-	if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-
-	defer func() {
-		if err != nil {
-			rollbackErr := tx.Rollback()
-			log.Println("rollback:", err)
-			if rollbackErr != nil {
-				err = fmt.Errorf("rollback failed: %w, original error: %v", rollbackErr, err)
-			}
-			return
-		}
-
-		commitErr := tx.Commit()
-		if commitErr != nil {
-			err = fmt.Errorf("commit failed: %w", commitErr)
-		}
-	}()
-
-	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
-	var cartItems []CartItem
-
-	cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
-	if err != nil {
-		if errors.Is(err, redis2.Nil) {
-			log.Printf("Cart not found for Client ID: %d", req.ClientId)
-			cartItems = []CartItem{}
-		} else {
-			return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to get cart from Redis: %w", err)
-		}
-	} else {
-		if err := json.Unmarshal([]byte(cartData), &cartItems); err != nil {
-			return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to parse cart data: %w", err)
-		}
-	}
-
-	if req.CartId == 0 {
-		log.Printf("Searching  cart for Client ID: %d", req.ClientId)
-		cartResp, err := r.CreateCartIfNotExists(ctx, CreateCartIfNotExistsRequest{
-			ClientId: req.ClientId,
-		})
-		if err != nil {
-			return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to create or retrieve cart: %w", err)
-		}
-		req.CartId = cartResp.CartId
-	}
-
-	var productPrice float64
-	var stockQuantity int32
-	err = tx.QueryRowContext(ctx, "SELECT price, quantity FROM products WHERE id = $1", req.ProductID).Scan(&productPrice, &stockQuantity)
-	if err == sql.ErrNoRows {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("product with ID %d not found", req.ProductID)
-	} else if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to retrieve product data: %w", err)
-	}
-
-	if stockQuantity < req.Quantity {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock for product ID %d", req.ProductID)
-	}
-
-	updateOrAddItem(&cartItems, req.ProductID, req.Quantity, productPrice)
-
-	updateCartData, err := json.Marshal(cartItems)
-	if err != nil {
-		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to marshal cart items: %w", err)
-	}
-	defer func() {
-		if err == nil {
-			log.Printf("Updating cart data in Redis: %s", updateCartData)
-			result1 := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0)
-			if err := result1.Err(); err != nil {
-				log.Printf("failed to save cart to Redis: %v", err)
-			}
-		}
-	}()
-
-	result, err := tx.ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
+	result, err := r.ctxGetter.DefaultTrOrDB(ctx, r.db).ExecContext(ctx, AddItemToCartSQL, req.CartId, req.ProductID, req.Quantity)
 	if err != nil {
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("failed to add item to cart: %w", err)
 	}
@@ -238,224 +130,117 @@ func (r *UserRepository) AddItemToCart(ctx context.Context, req AddItemToCartReq
 		return AddItemToCartResponse{Success: false}, fmt.Errorf("not enough quantity in stock")
 	}
 
-	addEvent := AddEvent{
-		ClientID:  int(req.ClientId),
-		ProductID: req.ProductID,
-		Quantity:  req.Quantity,
-		Message: fmt.Sprintf("Товар успешно добавлен в корзину {\"client_id\":%d,\"product_id\":%d,\"quantity\":%d}",
-			req.ClientId, req.ProductID, req.Quantity),
-	}
-
-	if err := r.SaveKafkaMessage2(
-		ctx,
-		tx,
-		SaveKafkaMessageRequest{
-			KafkaMessage: addEvent,
-			KafkaKey:     AddEventKey,
-		}); err != nil {
-		log.Printf("Ошибка сохранения сообщения: %v", err)
-	} else {
-		log.Printf("событие сохранено: %v", SaveKafkaMessageRequest{KafkaMessage: addEvent})
-	}
-
 	log.Printf("Item successfully added to cart for Client ID: %d", req.ClientId)
 	return AddItemToCartResponse{Success: true}, nil
 }
 
-func updateOrAddItem(cartItems *[]CartItem, productID int32, quantity int32, price float64) {
-	for i, item := range *cartItems {
-		if item.ProductID == productID {
-			(*cartItems)[i].ProductQuantity += quantity
-			return
+func (r *UserRepository) GetItemPrice(ctx context.Context, req GetItemPriceRequest) (resp GetItemPriceResponse, err error) {
+
+	err = r.db.QueryRowContext(ctx, "SELECT price FROM products WHERE id = $1", req.ProductID).Scan(&resp.ProductPrice)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return GetItemPriceResponse{}, fmt.Errorf("product not found with ID %d", req.ProductID)
 		}
+		return GetItemPriceResponse{}, fmt.Errorf("failed to get product price: %w", err)
 	}
-	*cartItems = append(*cartItems, CartItem{
-		ProductID:       productID,
-		ProductQuantity: quantity,
-		ProductPrice:    price,
-	})
+
+	return resp, nil
 }
 
 func (r *UserRepository) DeleteItemFromCart(ctx context.Context, req DeleteItemFromCartRequest) (resp DeleteItemFromCartResponse, err error) {
 
-	err = r.withTransaction(ctx, func(tx *sql.Tx) error {
-		redisKey := fmt.Sprintf("cart:%d", req.ClientId)
-		var cartItems []CartItem
+	log.Printf("DeleteItemFromCart called with CartID: %d, ProductID: %d", req.CartId, req.ProductID)
 
-		cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
-		if err != nil {
-			if errors.Is(err, redis2.Nil) {
-				log.Printf("Cart not found for Client ID: %d", req.ClientId)
-				cartItems = []CartItem{}
-			} else {
-				return fmt.Errorf("failed to get cart from Redis: %w", err)
-			}
-		} else {
-			if err := json.Unmarshal([]byte(cartData), &cartItems); err != nil {
-				return fmt.Errorf("failed to parse cart data: %w", err)
-			}
-		}
-
-		updatedItems, itemFound := decreaseItemQuantity(cartItems, req.ProductID)
-
-		if !itemFound {
-			return fmt.Errorf("item not found in cart")
-		}
-
-		updateCartData, err := json.Marshal(updatedItems)
-		if err != nil {
-			return fmt.Errorf("failed to marshal updated cart items: %w", err)
-		}
-
-		defer func() {
-			if err == nil {
-				log.Printf("Updating cart data in Redis: %s", updateCartData)
-				result1 := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0)
-				if err := result1.Err(); err != nil {
-					log.Printf("failed to save cart to Redis: %v", err)
-				}
-			}
-		}()
-
-		err = tx.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&req.CartId)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return fmt.Errorf("cart not found for user_id %d", req.ClientId)
-			}
-			return fmt.Errorf("failed to find cart_id: %v", err)
-		}
-
-		result, err := tx.ExecContext(ctx, DeleteItemFromCartSQL2, req.CartId, req.ProductID)
-		if err != nil {
-			return fmt.Errorf("failed to delete item from cart in database: %w", err)
-		}
-
-		affectedRows, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to check affected rows: %w", err)
-		}
-		if affectedRows == 0 {
-			return fmt.Errorf("no items were updated or deleted in the database")
-		}
-
-		deleteEvent := DeleteEvent{
-			ClientID: int(req.ClientId),
-			Message: fmt.Sprintf("Товар успешно удален из корзины {\"client_id\":%d,\"product_id\":%d}",
-				req.ClientId, req.ProductID),
-		}
-
-		if err := r.SaveKafkaMessage2(
-			ctx,
-			tx,
-			SaveKafkaMessageRequest{
-				KafkaMessage: deleteEvent,
-				KafkaKey:     DeleteEventKey,
-			}); err != nil {
-			log.Printf("Ошибка сохранения сообщения: %v", err)
-		} else {
-			log.Printf("событие сохранено: %v", SaveKafkaMessageRequest{KafkaMessage: deleteEvent})
-		}
-
-		return nil
-	})
-
+	result, err := r.ctxGetter.DefaultTrOrDB(ctx, r.db).ExecContext(ctx, DeleteItemFromCartSQL2, req.CartId, req.ProductID)
 	if err != nil {
-		return DeleteItemFromCartResponse{Success: false}, err
+		return DeleteItemFromCartResponse{}, fmt.Errorf("failed to delete item from cart in database: %w", err)
 	}
 
+	affectedRows, _ := result.RowsAffected()
+	log.Printf("Rows affected: %d", affectedRows)
+	if affectedRows == 0 {
+		return DeleteItemFromCartResponse{}, fmt.Errorf("no items were updated or deleted in the database")
+	}
+
+	log.Printf("Item successfully deleted from	 cart for Client ID: %d", req.ClientId)
 	return DeleteItemFromCartResponse{Success: true}, nil
-}
-
-func decreaseItemQuantity(cartItems []CartItem, productID int32) ([]CartItem, bool) {
-	for i, item := range cartItems {
-		if item.ProductID == productID {
-			if item.ProductQuantity > 1 {
-				item.ProductQuantity--
-				cartItems[i] = item
-				return cartItems, true
-			} else {
-				return append(cartItems[:i], cartItems[i+1:]...), true
-			}
-		}
-	}
-	return cartItems, false
 }
 
 func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp GetCartResponse, err error) {
 
-	err = r.withTransaction(ctx, func(tx *sql.Tx) error {
-		redisKey := fmt.Sprintf("cart:%d", req.ClientId)
+	//err = r.withTransaction(ctx, func(tx *sql.Tx) error {
+	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
 
-		cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
-		if err != nil {
-			if errors.Is(err, redis2.Nil) {
-				log.Printf("Cart not found for Client ID: %d", req.ClientId)
-			} else {
-				return fmt.Errorf("failed to get cart from Redis: %w", err)
-			}
+	cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
+	if err != nil {
+		if errors.Is(err, redis2.Nil) {
+			log.Printf("Cart not found for Client ID: %d", req.ClientId)
 		} else {
-			log.Printf("Cart data retrieved from Redis for Client ID %d: %s", req.ClientId, cartData)
-			if err := json.Unmarshal([]byte(cartData), &resp.CartItems); err != nil {
-				return fmt.Errorf("failed to parse cart data: %w", err)
+			return GetCartResponse{}, fmt.Errorf("failed to get cart from Redis: %w", err)
+		}
+	} else {
+		log.Printf("Cart data retrieved from Redis for Client ID %d: %s", req.ClientId, cartData)
+		if err := json.Unmarshal([]byte(cartData), &resp.CartItems); err != nil {
+			return GetCartResponse{}, fmt.Errorf("failed to parse cart data: %w", err)
+		}
+	}
+	totalPrice := 0.0
+	for _, item := range resp.CartItems {
+		totalPrice += float64(item.ProductQuantity) * item.ProductPrice
+	}
+	resp.TotalPrice = fmt.Sprintf("%.2f", totalPrice)
+
+	if len(resp.CartItems) == 0 {
+		log.Printf("Cart not found in Redis, fetching from database for Client ID: %d", req.ClientId)
+
+		err = r.db.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&req.CartId)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return GetCartResponse{}, fmt.Errorf("cart not found for user_id %d", req.ClientId)
 			}
+			return GetCartResponse{}, fmt.Errorf("failed to find cart_id for user_id %d: %v", req.ClientId, err)
 		}
+
+		rows, err := r.db.QueryContext(ctx, GetCartItemSQL, req.CartId)
+		if err != nil {
+			return GetCartResponse{}, fmt.Errorf("failed to get cart items for cart_id %d: %w", req.CartId, err)
+		}
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				err = fmt.Errorf("failed to close rows: %w", closeErr)
+			}
+		}()
+
+		resp.CartItems = []CartItem{}
 		totalPrice := 0.0
-		for _, item := range resp.CartItems {
-			totalPrice += float64(item.ProductQuantity) * item.ProductPrice
+
+		for rows.Next() {
+			var cartItem CartItem
+			if err := rows.Scan(&cartItem.ProductID, &cartItem.ProductQuantity, &cartItem.ProductPrice); err != nil {
+				return GetCartResponse{}, fmt.Errorf("failed to scan product for cart_id %d: %w", req.CartId, err)
+			}
+
+			productPrice := cartItem.ProductPrice
+			totalPrice += productPrice * float64(cartItem.ProductQuantity)
+			resp.CartItems = append(resp.CartItems, cartItem)
 		}
+
+		if err := rows.Err(); err != nil {
+			return GetCartResponse{}, fmt.Errorf("error occurred during row iteration for cart_id %d: %w", req.CartId, err)
+		}
+
 		resp.TotalPrice = fmt.Sprintf("%.2f", totalPrice)
 
-		if len(resp.CartItems) == 0 {
-			log.Printf("Cart not found in Redis, fetching from database for Client ID: %d", req.ClientId)
-
-			err = tx.QueryRowContext(ctx, GetCartSQL, req.ClientId).Scan(&req.CartId)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					return fmt.Errorf("cart not found for user_id %d", req.ClientId)
-				}
-				return fmt.Errorf("failed to find cart_id for user_id %d: %v", req.ClientId, err)
-			}
-
-			rows, err := tx.QueryContext(ctx, GetCartItemSQL, req.CartId)
-			if err != nil {
-				return fmt.Errorf("failed to get cart items for cart_id %d: %w", req.CartId, err)
-			}
-			defer func() {
-				if closeErr := rows.Close(); closeErr != nil {
-					err = fmt.Errorf("failed to close rows: %w", closeErr)
-				}
-			}()
-
-			resp.CartItems = []CartItem{}
-			totalPrice := 0.0
-
-			for rows.Next() {
-				var cartItem CartItem
-				if err := rows.Scan(&cartItem.ProductID, &cartItem.ProductQuantity, &cartItem.ProductPrice); err != nil {
-					return fmt.Errorf("failed to scan product for cart_id %d: %w", req.CartId, err)
-				}
-
-				productPrice := cartItem.ProductPrice
-				totalPrice += productPrice * float64(cartItem.ProductQuantity)
-				resp.CartItems = append(resp.CartItems, cartItem)
-			}
-
-			if err := rows.Err(); err != nil {
-				return fmt.Errorf("error occurred during row iteration for cart_id %d: %w", req.CartId, err)
-			}
-
-			resp.TotalPrice = fmt.Sprintf("%.2f", totalPrice)
-
-			updateCartData, err := json.Marshal(resp.CartItems)
-			if err != nil {
-				return fmt.Errorf("failed to marshal cart items: %w", err)
-			}
-			if err := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0).Err(); err != nil {
-				log.Printf("failed to save cart to Redis: %w", err)
-			}
+		updateCartData, err := json.Marshal(resp.CartItems)
+		if err != nil {
+			return GetCartResponse{}, fmt.Errorf("failed to marshal cart items: %w", err)
 		}
+		if err := r.redisClient.Client.Set(ctx, redisKey, updateCartData, 0).Err(); err != nil {
+			log.Printf("failed to save cart to Redis: %w", err)
+		}
+	}
 
-		getcartEvent := GetCartEvent{
+	/*getcartEvent := GetCartEvent{
 			ClientID:   int(req.ClientId),
 			CartItems:  resp.CartItems,
 			TotalPrice: resp.TotalPrice,
@@ -467,7 +252,7 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 			tx,
 			SaveKafkaMessageRequest{
 				KafkaMessage: getcartEvent,
-				KafkaKey:     GetCartEventKey,
+				KafkaKey:     usecase.GetCartEventKey,
 			}); err != nil {
 			log.Printf("Ошибка сохранения сообщения: %v", err)
 		} else {
@@ -479,12 +264,14 @@ func (r *UserRepository) GetCart(ctx context.Context, req GetCartRequest) (resp 
 
 	if err != nil {
 		return GetCartResponse{}, err
-	}
+	}*/
 
 	return resp, nil
 }
 
 func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest) (resp PaymentResponse, err error) {
+
+	//err = r.withTransaction(ctx, func(tx *sql.Tx) error {
 
 	result, err := r.db.ExecContext(ctx, PaymentSQL, req.ClientId)
 
@@ -497,8 +284,42 @@ func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest
 		return resp, fmt.Errorf("ошибка проверки затронутых строк: %v", err)
 	}
 	if rowsAffected == 0 {
+		/*paymentEvent := PaymentEvent{
+			ClientID: int(req.ClientId),
+			Message:  fmt.Sprintf("Недостаточно средств для клиента %d", req.ClientId),
+		}
+
+		if err := r.SaveKafkaMessage2(
+			ctx,
+			tx,
+			SaveKafkaMessageRequest{
+				KafkaMessage: paymentEvent,
+				KafkaKey:     usecase.PaymentEventKeyFalse,
+			}); err != nil {
+			log.Printf("Ошибка сохранения сообщения: %v", err)
+		} else {
+			log.Printf("событие сохранено: %v", SaveKafkaMessageRequest{KafkaMessage: paymentEvent})
+		}*/
+
 		return resp, fmt.Errorf("платёж не выполнен: возможно, недостаточно средств на счёте")
 	}
+
+	/*paymentEvent := PaymentEvent{
+		ClientID: int(req.ClientId),
+		Message:  fmt.Sprintf("Корзина клиента успешно оплачена %d", req.ClientId),
+	}
+
+	if err := r.SaveKafkaMessage2(
+		ctx,
+		tx,
+		SaveKafkaMessageRequest{
+			KafkaMessage: paymentEvent,
+			KafkaKey:     usecase.PaymentEventKeyTrue,
+		}); err != nil {
+		log.Printf("Ошибка сохранения сообщения: %v", err)
+	} else {
+		log.Printf("событие сохранено: %v", SaveKafkaMessageRequest{KafkaMessage: paymentEvent})
+	}*/
 
 	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
 	emptyCartData, err := json.Marshal([]CartItem{})
@@ -514,7 +335,50 @@ func (r *UserRepository) SimulatePayment(ctx context.Context, req PaymentRequest
 	}
 
 	resp = PaymentResponse{Success: true}
+
+	/*if err != nil {
+	  return PaymentResponse{Success: false}, err
+	  }*/
+
 	return resp, nil
+
+}
+
+func (r *UserRepository) GetCartFromRedis(ctx context.Context, req GetCartFromRedisRequest) (resp GetCartFromRedisResponse, err error) {
+	redisKey := fmt.Sprintf("cart:%d", req.ClientId)
+	resp.RedisKey = redisKey
+
+	cartData, err := r.redisClient.Client.Get(ctx, redisKey).Result()
+	if err != nil {
+		if errors.Is(err, redis2.Nil) {
+			log.Printf("Cart not found for Client ID: %d", req.ClientId)
+			return GetCartFromRedisResponse{RedisKey: redisKey}, nil
+		}
+		return GetCartFromRedisResponse{}, fmt.Errorf("failed to get cart from Redis: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(cartData), &resp.CartItems); err != nil {
+		return GetCartFromRedisResponse{}, fmt.Errorf("failed to parse cart data: %w", err)
+	}
+	return resp, nil
+}
+
+func (r *UserRepository) SetCartInRedis(ctx context.Context, req SetCartInRedisRequest) (SetCartInRedisResponse, error) {
+
+	cartData, err := json.Marshal(req.CartItems)
+	if err != nil {
+		log.Printf("failed to marshal cart data: %v", err)
+		return SetCartInRedisResponse{Success: false}, fmt.Errorf("failed to serialize cart data: %w", err)
+	}
+
+	result := r.redisClient.Client.Set(ctx, req.RedisKey, cartData, 0)
+	if err := result.Err(); err != nil {
+		log.Printf("failed to save cart to Redis: %v", err)
+		return SetCartInRedisResponse{Success: false}, fmt.Errorf("failed to save cart to Redis: %w", err)
+	}
+
+	log.Printf("Successfully saved cart data for Redis Key: %s", req.RedisKey)
+	return SetCartInRedisResponse{Success: true}, nil
 
 }
 
@@ -530,7 +394,7 @@ func (r *UserRepository) SaveKafkaMessage(ctx context.Context, req SaveKafkaMess
 		VALUES ($1, $2, DEFAULT, DEFAULT)
 	`
 
-	_, err = r.db.ExecContext(ctx, query, req.KafkaKey, kafkaMessage)
+	_, err = r.ctxGetter.DefaultTrOrDB(ctx, r.db).ExecContext(ctx, query, req.KafkaKey, kafkaMessage)
 	if err != nil {
 		return SaveKafkaMessageResponse{Success: false}, fmt.Errorf("failed to save Kafka message: %w", err)
 	}
@@ -567,24 +431,4 @@ func (r *UserRepository) SetDone(id int) error {
 
 	return nil
 
-}
-
-func (r *UserRepository) SaveKafkaMessage2(ctx context.Context, tx *sql.Tx, req SaveKafkaMessageRequest) error {
-
-	kafkaMessage, err := json.Marshal(req.KafkaMessage)
-	if err != nil {
-		return fmt.Errorf("failed to serialize Kafka message: %w", err)
-	}
-
-	query := `
-		INSERT INTO events (kafka_key, kafka_message, status, created_at)
-		VALUES ($1, $2, DEFAULT, DEFAULT)
-	`
-
-	_, err = tx.ExecContext(ctx, query, req.KafkaKey, kafkaMessage)
-	if err != nil {
-		return fmt.Errorf("failed to save Kafka message: %w", err)
-	}
-
-	return nil
 }

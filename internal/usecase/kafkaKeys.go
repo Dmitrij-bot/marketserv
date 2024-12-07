@@ -1,9 +1,10 @@
-package repository
+package usecase
 
 const (
 	SearchProductEventKey = "SearchProductTrue"
 	AddEventKey           = "AddItemTrue"
 	DeleteEventKey        = "DeleteItemTrue"
 	GetCartEventKey       = "GetCartTrue"
-	PaymentEventKey       = "SimulatePaymentTrue"
+	PaymentEventKeyTrue   = "SimulatePaymentTrue"
+	PaymentEventKeyFalse  = "SimulatePaymentFalse"
 )

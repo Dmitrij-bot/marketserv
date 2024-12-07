@@ -12,6 +12,8 @@ import (
 	"github.com/Dmitrij-bot/marketserv/pkg/lyfecycle"
 	"github.com/Dmitrij-bot/marketserv/pkg/postgres"
 	"github.com/Dmitrij-bot/marketserv/pkg/redis"
+	tx "github.com/avito-tech/go-transaction-manager/sqlx"
+	"github.com/avito-tech/go-transaction-manager/trm/manager"
 	"log"
 	"time"
 )
@@ -33,8 +35,9 @@ func (app *App) Start(ctx context.Context) error {
 
 	db := postgres.NewDB(app.cfg.Postgres)
 	redisClient := redis.NewRedisDB(app.cfg.Redis)
-	userRepo := repository.NewUserRepository(db, redisClient)
-	userUseCase := usecase.New(userRepo)
+	userRepo := repository.NewUserRepository(db, redisClient, tx.DefaultCtxGetter)
+	txManager := manager.Must(tx.NewDefaultFactory(db.DB))
+	userUseCase := usecase.New(userRepo, txManager)
 	userService := grpc.NewUserService(userUseCase)
 	grpcServer := grpc2.NewGRPCServer(app.cfg.GRPC, userService)
 
